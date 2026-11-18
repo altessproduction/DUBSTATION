@@ -1,0 +1,2678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="DubStation — live dub mixing station in one HTML file: two players, kill switches, dub filter, tape echo, reverb, dub siren, sampler, mic, graphic EQ.">
+<meta name="theme-color" content="#120c08">
+<title>DubStation V1.0 — dub mixing station</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAA5klEQVR42mMU4uFgoCVgYqAxGLVgUFrwtk+cihYwoiVTuOnPP/zRaXpLqyB6/uEPAwPDlTphBgaG3fkC1PcBxAIGBobnH//CGXELPpNhAQsxiiDWLErghTDK13+jSSqC+6YzkKvAiZ2GyRRiU4ETe7gxCw3zAcQaiB12KowMDAxqov9oktGQTce0Y7QsoocFh+78Z2BguPWaCU5SxwJJfmYGBoaVZ/+g2UFOTsY0+vnHvxP2/aRaUYFsLqlFBQvxRtOksHOd+GF3voDrxA+Dt8JhxGx4ve0TFy56Sasqc7SoGLWAdAAApmNdquWPElwAAAAASUVORK5CYII=">
+<style>
+:root{
+  --bg:#120c08; --panel:#1d140c; --panel2:#251811; --edge:#3d2a1a;
+  --text:#f2e3c8; --dim:#a08c6a; --acc:#ff9a1f; --acc2:#e6392b; --ok:#59c15c;
+  --knob:#2e1f13; --needle:#ffd27a;
+}
+body[data-theme="roots"]{
+  --bg:#0a120a; --panel:#122014; --panel2:#182a1b; --edge:#2a4a2e;
+  --text:#e8f2dc; --dim:#8aa87f; --acc:#8fd14f; --acc2:#c9a227; --ok:#59c15c;
+  --knob:#1a2c1c; --needle:#d9f0a8;
+}
+body[data-theme="digital"]{
+  --bg:#080c14; --panel:#0f1626; --panel2:#141d33; --edge:#26355a;
+  --text:#dde8ff; --dim:#7d8db4; --acc:#41c9ff; --acc2:#7b5cff; --ok:#41ff9d;
+  --knob:#16203a; --needle:#9fe4ff;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0;}
+body{
+  background:radial-gradient(1200px 600px at 50% -10%, var(--panel2), var(--bg) 60%);
+  color:var(--text); font-family:"Segoe UI", system-ui, -apple-system, sans-serif;
+  min-height:100vh; padding:clamp(6px,1.5vw,18px);
+}
+button{font-family:inherit;}
+h1,h2,h3{margin:0;}
+#app{max-width:1400px; margin:0 auto; display:flex; flex-direction:column; gap:clamp(6px,1vw,12px);}
+.panel{
+  background:linear-gradient(180deg, var(--panel2), var(--panel));
+  border:1px solid var(--edge); border-radius:12px; padding:clamp(8px,1.2vw,14px);
+  box-shadow:0 2px 10px rgba(0,0,0,.45);
+}
+.panel h3{
+  font-size:clamp(11px,1.2vw,13px); letter-spacing:.18em; text-transform:uppercase;
+  color:var(--acc); border-bottom:1px solid var(--edge); padding-bottom:6px; margin-bottom:8px;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.panel h3 .sub{color:var(--dim); letter-spacing:.05em; text-transform:none; font-weight:400; font-size:.85em;}
+
+/* ---------- modules repliables ---------- */
+/* la barre de titre replie le module : chevron à gauche du titre */
+.panel h3{cursor:pointer; user-select:none;}
+.panel h3::before{
+  content:"\25B8"; flex:none; width:.95em; text-align:center; color:var(--dim);
+  transform:rotate(90deg); transition:transform .18s ease;
+}
+.panel h3:hover::before{color:var(--acc);}
+.panel.collapsed h3::before{transform:rotate(0deg);}
+.panel.collapsed > :not(h3){display:none !important;}
+.panel.collapsed{padding-top:5px; padding-bottom:5px;}
+.panel.collapsed h3{margin-bottom:0; border-bottom-color:transparent;}
+.panel.collapsed h3 .tgl{min-width:0; padding:3px 9px;}
+/* decks dans la rangée players : un player replié ne doit pas s'étirer
+   à la hauteur de son voisin (align-items:stretch du .prow) */
+.prow > .deck.collapsed{align-self:flex-start;}
+
+/* éléments de résumé visibles dans la barre de titre d'un module replié :
+   mini VU long (master) et ligne « à l'antenne » (players / decks) */
+.panel h3 .minivu{
+  display:none; flex:1 1 auto; min-width:240px; height:16px; margin-left:4px;
+  border:1px solid var(--edge); border-radius:5px; background:rgba(0,0,0,.4);
+}
+.panel.collapsed h3 .minivu{display:block;}
+.panel h3 .fold-sum{
+  display:none; flex:1 1 auto; min-width:120px; margin-left:auto;
+  align-items:center; gap:8px; text-align:right;
+}
+.panel.collapsed h3 .fold-sum{display:flex;}
+.fsdeck{
+  flex:none; background:var(--edge); color:var(--text); font-size:10px; font-weight:800;
+  padding:1px 7px; border-radius:4px; letter-spacing:.1em;
+}
+.fsdeck.on{background:var(--acc); color:#101010;}
+.fstitle{
+  flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  text-transform:none; letter-spacing:.04em; font-weight:600; color:var(--text); font-size:.95em;
+}
+.fstime{flex:none; font-variant-numeric:tabular-nums; letter-spacing:.06em; color:var(--text);}
+.fstime.low{color:#ff5340; font-weight:800; animation:dubblink 1s step-start infinite;}
+@keyframes dubblink{0%,100%{opacity:1;}50%{opacity:.18;}}
+/* VU du micro déplié : bande pleine largeur sous les 3 zones (masqué par la règle
+   .panel.collapsed > :not(h3) quand le module micro est replié) */
+.micvu-big{
+  display:block; width:100%; height:18px; margin-top:8px;
+  border:1px solid var(--edge); border-radius:5px; background:rgba(0,0,0,.4);
+}
+
+/* ---------- header ---------- */
+header.panel{display:flex; align-items:center; gap:clamp(8px,1.5vw,16px); flex-wrap:wrap;}
+.logo{font-size:clamp(18px,3vw,28px); font-weight:800; letter-spacing:.06em; color:var(--acc);}
+.logo b{color:var(--acc2);}
+.hbtns{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-left:auto;}
+.mini{
+  background:var(--knob); color:var(--text); border:1px solid var(--edge); border-radius:8px;
+  padding:6px 10px; font-size:12px; cursor:pointer; letter-spacing:.06em;
+}
+.mini:hover{border-color:var(--acc);}
+.mini.on{background:var(--acc2); border-color:var(--acc2); color:#fff;}
+#recBtn{color:#ff6b5e; border-color:#5a2c26;}
+#recBtn.on{background:#a3271c; border-color:#ff6b5e; color:#fff; animation:blink 1.2s infinite;}
+@keyframes blink{50%{opacity:.55;}}
+
+/* ---------- main grid ---------- */
+#row1{display:grid; grid-template-columns:1fr; gap:clamp(6px,1vw,12px);}
+#row2{display:grid; grid-template-columns:1fr; gap:clamp(6px,1vw,12px);}
+.killgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:6px;}
+/* module kill seul sur sa ligne : colonnes compactes à gauche (largeur = contenu :
+   boutons KILL resserrés, knob VOL étroit, vumètre fin), le graphe courbe + spectre
+   prend TOUT le reste de la ligne */
+.killwrap{display:flex; gap:clamp(8px,1vw,14px); align-items:stretch;}
+.killwrap .killgrid{flex:0 0 auto; min-width:0;}
+.killviz{
+  flex:1 1 0; min-width:340px;
+  min-height:240px;
+  border:1px solid var(--edge); border-radius:10px; background:#0d0a06;
+  overflow:hidden;
+}
+#killGraph{display:block; width:100%; height:100%;}
+#isoByp{margin-left:auto; flex:none; padding:3px 9px; font-size:10px; letter-spacing:.12em;}
+#isoByp.on{background:#a3271c; border-color:#ff6b5e; color:#fff;}
+.kcol{
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  background:rgba(255,255,255,.02); border:1px solid var(--edge); border-radius:10px;
+  padding:6px 3px 8px;
+}
+.kcol .tgl{width:100%; padding:5px 2px; font-size:10px; letter-spacing:.05em; white-space:nowrap;}
+.kbody{display:flex; gap:5px; align-items:stretch; justify-content:center; width:100%; flex:1;}
+.kknobs{flex-direction:column; align-items:center; gap:2px;}
+.kcol .knob.sm{width:46px;}
+.vmeter{position:relative; width:11px; flex:none; min-height:150px; border:1px solid var(--edge); border-radius:7px; background:#0d0a06; overflow:hidden;}
+/* couleurs FIXES sur toute la hauteur : vert 0-50%, jaune 50-90%, rouge 90-100% ;
+   le remplissage se fait par un cache sombre qui descend du haut (.vcover) */
+.vgrad{position:absolute; inset:0; background:linear-gradient(to top,#2f9e52 0%,#2f9e52 50%,#e0b53f 50%,#e0b53f 90%,#e05038 90%);}
+.vcover{position:absolute; top:0; left:0; right:0; height:100%; background:#0d0a06;}
+.vpeak{position:absolute; left:0; right:0; height:2px; background:#f4ead6; top:100%; opacity:.8;}
+.vled{position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(to top, transparent 0 5px, rgba(10,8,5,.6) 5px 7px);}
+@media (max-width:560px){ .killgrid{grid-template-columns:repeat(2,1fr);} }
+#row3{display:grid; grid-template-columns:1fr; gap:clamp(6px,1vw,12px);}
+@media (max-width:1020px){
+  #row1,#row2,#row3{grid-template-columns:1fr;}
+  .killwrap{flex-direction:column;}
+  .killviz{flex:none; max-width:none; height:clamp(240px,32vh,340px);}
+}
+
+/* ---------- decks ---------- */
+.deck .pl{
+  background:rgba(0,0,0,.28); border:1px solid var(--edge); border-radius:8px;
+  max-height:118px; overflow-y:auto; margin:10px 0 8px; font-size:12px;
+}
+.pl .item{padding:4px 8px; cursor:pointer; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.pl .item.sel{color:var(--acc); background:rgba(255,154,31,.08);}
+.pl .item.play{color:var(--ok);}
+.pl .empty{padding:8px; color:var(--dim); font-style:italic; font-size:11px;}
+.deck .title{font-size:13px; font-weight:600; min-height:18px; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.deck.dragover{outline:2px dashed var(--acc); outline-offset:-4px;}
+.bar{position:relative; height:22px; background:var(--knob); border:1px solid var(--edge); border-radius:6px; margin:6px 0 8px; cursor:pointer; overflow:hidden;}
+.bar .fill{position:absolute; inset:0; width:0%; background:linear-gradient(90deg, var(--acc2), var(--acc)); opacity:.85;}
+.bar .tlabel{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-variant-numeric:tabular-nums; color:var(--text); text-shadow:0 1px 2px #000;}
+.transport{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;}
+.tbtn{
+  flex:1 1 auto; min-width:52px; background:var(--knob); color:var(--text); border:1px solid var(--edge);
+  border-radius:8px; padding:9px 8px; font-size:13px; font-weight:700; cursor:pointer;
+}
+.tbtn:hover{border-color:var(--acc);}
+.tbtn.on{background:var(--acc); color:#1a1008; border-color:var(--acc);}
+.tbtn.play.on{background:var(--ok); color:#08150a; border-color:var(--ok);}
+.krow{display:flex; flex-wrap:wrap; gap:2px; justify-content:space-around;}
+
+/* ---------- knob ---------- */
+.knob{display:flex; flex-direction:column; align-items:center; gap:3px; width:64px; user-select:none; touch-action:none;}
+.knob .dial{
+  width:46px; height:46px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, var(--panel2), var(--knob) 70%);
+  border:2px solid var(--edge); position:relative; cursor:ns-resize; flex:none;
+}
+.knob .dial::after{
+  content:""; position:absolute; left:50%; top:4px; width:3px; height:14px;
+  background:var(--needle); border-radius:2px; transform-origin:50% 19px;
+  transform:translateX(-50%) rotate(var(--rot,-135deg));
+}
+.knob.lg .dial{width:56px; height:56px;}
+.knob.lg .dial::after{height:18px; transform-origin:50% 24px;}
+.knob .klabel{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); text-align:center; line-height:1.1;}
+.knob .kval{font-size:10px; color:var(--acc); font-variant-numeric:tabular-nums; min-height:12px;}
+.knob.learning .dial{border-color:#fff; box-shadow:0 0 8px #fff;}
+.knob.mapped::before{content:"M"; position:absolute; margin-top:-4px; font-size:8px; color:#7fd0ff;}
+.knob.sm{width:52px;}
+.knob.sm .dial{width:38px; height:38px;}
+.knob.sm .dial::after{height:12px; transform-origin:50% 16px; top:3px;}
+.knob.sm .klabel{font-size:8.5px;}
+.knob.sm .kval{font-size:9px;}
+.wrow{display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;}
+.wlab{font-size:10px; color:var(--dim); letter-spacing:.12em;}
+#eq10row{display:flex; gap:6px; justify-content:space-between; flex-wrap:wrap;}
+.fader.sm{gap:2px;}
+.fader.sm .track{width:10px; height:64px;}
+.fader.sm .cap{width:18px; height:10px; left:-4px;}
+.fader.sm .flabel{font-size:8px;}
+.fader.sm .fval{font-size:8.5px; min-width:34px;}
+
+/* ---------- toggles / switches ---------- */
+.tgl{
+  background:var(--knob); border:1px solid var(--edge); color:var(--dim); border-radius:7px;
+  padding:7px 9px; font-size:11px; font-weight:700; letter-spacing:.06em; cursor:pointer; min-width:44px;
+}
+.tgl.on{background:var(--acc2); color:#fff; border-color:var(--acc2);}
+.tgl.grn.on{background:var(--ok); color:#06140a; border-color:var(--ok);}
+.tgl.learn-flash{outline:2px solid #fff;}
+.grp{display:flex; gap:4px; flex-wrap:wrap; align-items:flex-start;}
+
+/* ---------- siren ---------- */
+#sirenBtn{
+  flex:none; padding:12px 26px; font-size:15px; font-weight:900; letter-spacing:.25em;
+  background:linear-gradient(180deg,var(--acc2),#7a1a12); color:#fff; border:1px solid var(--acc);
+  border-radius:10px; cursor:pointer; text-transform:uppercase; touch-action:none;
+}
+#sirenBtn:active{filter:brightness(1.3);}
+#sirenBtn.active{filter:brightness(1.45); box-shadow:0 0 18px var(--acc2);}
+/* mini FIRE : visible uniquement dans la barre de titre quand la siren est repliée
+   (repli : le gros bouton disparaît, ce petit bouton rouge garde le déclenchement à portée) */
+.panel h3 .firemini{
+  display:none; flex:none; margin-left:auto; padding:3px 14px; font-size:10px; font-weight:900;
+  letter-spacing:.18em; text-transform:uppercase; cursor:pointer; touch-action:none;
+  background:linear-gradient(180deg,var(--acc2),#7a1a12); color:#fff; border:1px solid var(--acc); border-radius:7px;
+}
+.panel.collapsed h3 .firemini{display:block;}
+.firemini:active{filter:brightness(1.3);}
+.firemini.active{filter:brightness(1.45); box-shadow:0 0 12px var(--acc2);}
+/* mini kills : les 4 boutons de kill restent dans la barre de titre quand le
+   module est replié (même principe que le mini FIRE de la siren), BYPASS ISO
+   venant ensuite, tout à droite ; en replié c'est le groupe qui porte la marge
+   auto et #isoByp la perd (règle ci-dessous), en déplié les minis sont masquées
+   et BYPASS ISO retrouve sa marge auto d'origine ; les boutons reprennent le
+   style .tgl.grn des vrais kills, compacté par la règle .panel.collapsed h3 .tgl */
+.panel h3 .killminis{
+  display:none; flex:none; margin-left:auto; gap:6px; align-items:center;
+}
+.panel.collapsed h3 .killminis{display:flex;}
+.panel.collapsed h3 #isoByp{margin-left:0;}
+/* modules sur une ligne (siren / sampler) */
+.oneline{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.oneline select{
+  background:var(--panel2); color:var(--text); border:1px solid var(--edge); border-radius:8px;
+  padding:8px 6px; font-size:11.5px; font-family:inherit; cursor:pointer; outline:none; max-width:160px;
+}
+.oneline select:hover{border-color:var(--acc);}
+.oneline .fxline{flex:1; min-width:220px;}
+
+/* ---------- sampler ---------- */
+.setrow{display:flex; gap:6px; align-items:center; margin-bottom:8px; flex-wrap:wrap;}
+.pads{display:grid; grid-template-columns:repeat(6,1fr); gap:6px;}
+/* pads du module une ligne : les 12 tiennent sur une ligne desktop */
+.padsline{flex:1; min-width:260px; grid-template-columns:repeat(auto-fit,minmax(46px,1fr));}
+@media (max-width:420px){.pads{grid-template-columns:repeat(4,1fr);}}
+.pad{
+  position:relative; height:56px; border-radius:8px; border:1px solid var(--edge);
+  background:var(--knob); color:var(--dim); font-size:10px; font-weight:600; cursor:pointer;
+  overflow:hidden; padding:4px; text-align:center; line-height:1.15;
+  display:flex; flex-direction:column; justify-content:center; word-break:break-word;
+}
+.pad.loaded{color:var(--text); border-color:var(--acc);}
+.pad.active{background:var(--acc); color:#1a1008; border-color:var(--acc); filter:brightness(1.2);}
+.pad.dragover{outline:2px dashed var(--acc); outline-offset:-3px;}
+.pad .pkey{position:absolute; top:2px; right:4px; font-size:8px; color:var(--dim);}
+.pad .pnum{position:absolute; top:2px; left:4px; font-size:8px; color:var(--dim);}
+
+/* ---------- faders ---------- */
+.fader{display:flex; flex-direction:column; align-items:center; gap:4px; user-select:none; touch-action:none;}
+.fader .track{width:14px; height:110px; background:var(--knob); border:1px solid var(--edge); border-radius:7px; position:relative; cursor:ns-resize;}
+.fader .track::before{content:""; position:absolute; left:2px; right:2px; top:8px; bottom:8px; background:linear-gradient(180deg,transparent 0 50%, rgba(255,255,255,.05) 50%); }
+.fader .cap{
+  position:absolute; left:-6px; width:24px; height:14px; border-radius:4px;
+  background:linear-gradient(180deg,var(--acc),#b96a10); border:1px solid var(--edge);
+}
+.fader .flabel{font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em;}
+.fader .fval{font-size:10px; color:var(--acc); font-variant-numeric:tabular-nums; min-height:12px; white-space:nowrap; min-width:52px; text-align:center;}
+.fader.h{flex-direction:row;}
+.fader.h .track{width:160px; height:16px;}
+.fader.h .cap{left:auto; top:-5px; width:16px; height:24px; transform:translateX(2px);}
+@media (max-width:520px){.fader.h .track{width:110px;}}
+
+/* module players + crossfader (sous l'EQ10) */
+.prow{display:flex; gap:10px; align-items:stretch;}
+.prow .deck{flex:1; min-width:0;}
+.xfcenter{flex:none; width:210px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  background:rgba(255,255,255,.02); border:1px solid var(--edge); border-radius:10px; padding:10px 8px;}
+/* colonnes EQ de tranche + sélecteur de source, au-dessus du crossfader */
+.eqcols{display:flex; gap:8px; justify-content:center; align-items:stretch;}
+.eqcol{display:flex; flex-direction:column; align-items:center; gap:8px;
+  background:rgba(255,255,255,.02); border:1px solid var(--edge); border-radius:10px; padding:8px 6px;}
+.srcsel{display:flex; flex-direction:column; gap:4px; width:100%;
+  background:rgba(0,0,0,.22); border:1px solid var(--edge); border-radius:8px; padding:5px;}
+.srcsel .tgl{width:100%; min-width:0; padding:5px 6px; font-size:10px;}
+.xftitle{font-size:9.5px; letter-spacing:.12em; color:var(--dim); text-transform:uppercase;}
+.xfcenter .fader.h{flex-wrap:wrap; justify-content:center;}
+.xfcenter .fader.h .track{width:120px; height:14px;}
+.xfcenter .fader.h .cap{width:14px; height:22px; top:-4px;}
+.xfcenter .fader.h .fval{flex-basis:100%; text-align:center; min-width:0;}
+.xfcenter .track::after{content:""; position:absolute; left:50%; top:2px; bottom:2px; width:1px; background:rgba(255,255,255,.28); pointer-events:none;}
+.xfcenter .flabel{font-size:10px;}
+@media (max-width:1020px){ .prow{flex-direction:column;} .xfcenter{width:100%; padding:12px 8px;} }
+
+/* ---------- fx zone ---------- */
+.fxline{display:flex; gap:2px; flex-wrap:wrap; justify-content:flex-start; row-gap:6px;}
+/* EQ10 : knobs sur une seule ligne + bouton RESET en bout de ligne */
+.eq10line{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.eq10line .fxline{flex:1; min-width:0;}
+
+/* ---------- meters ---------- */
+/* module master + moniteurs fusionné : le rang de knobs garde sa taille naturelle */
+#krMaster{flex:0 0 auto; min-width:0;}
+/* écho & reverbe sur une ligne : rangs de knobs et fader à leur taille naturelle */
+#krEcho1,#krEcho2,#krRev{flex:0 0 auto; min-width:0;}
+#fadEcho{flex:0 0 auto;}
+/* micro : 3 zones distinctes — gain & égaliseur / filtre paramétrique / départs fx */
+.miczones{display:flex; gap:clamp(10px,1.6vw,24px); align-items:flex-start; flex-wrap:wrap;}
+.miczone{min-width:0;}
+.miczone + .miczone{border-left:1px solid var(--edge); padding-left:clamp(10px,1.6vw,24px);}
+.miczone .zlab{font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); margin-bottom:4px; white-space:nowrap;}
+/* siren : mêmes 3 zones que le micro, à droite des boutons FIRE/preset/onde/chop */
+.srzones{flex:1 1 0; min-width:0;}
+.srzones .fxline{min-width:0;}
+#meters{display:flex; gap:10px; align-items:stretch; flex-wrap:wrap;}
+canvas.mcv{background:rgba(0,0,0,.35); border:1px solid var(--edge); border-radius:8px; display:block; max-width:100%;}
+.mwrap{display:flex; flex-direction:column; gap:4px;}
+.mwrap .mlabel{font-size:9.5px; color:var(--dim); letter-spacing:.12em; text-transform:uppercase; text-align:center;}
+#xfzone{display:flex; flex-direction:column; gap:8px; justify-content:center; align-items:center;}
+
+/* ---------- overlay / help / toast ---------- */
+#power{
+  position:fixed; inset:0; background:rgba(8,5,2,.94); z-index:50;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; text-align:center; padding:20px;
+}
+#power h1{font-size:clamp(26px,6vw,52px); color:var(--acc); letter-spacing:.1em;}
+#power h1 b{color:var(--acc2);}
+#power p{color:var(--dim); max-width:520px; line-height:1.6; font-size:14px;}
+#powerBtn{
+  padding:18px 42px; font-size:clamp(16px,2.4vw,22px); font-weight:900; letter-spacing:.2em; cursor:pointer;
+  background:linear-gradient(180deg,var(--acc),#b96a10); color:#1a1008; border:none; border-radius:14px;
+  box-shadow:0 0 30px rgba(255,154,31,.4);
+}
+#help{
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:60; overflow:auto; padding:24px;
+}
+#help .card{max-width:760px; margin:0 auto; background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:24px; line-height:1.7; font-size:14px;}
+#help kbd{background:var(--knob); border:1px solid var(--edge); border-radius:4px; padding:1px 6px; font-size:12px; font-family:ui-monospace,monospace;}
+#help h2{color:var(--acc); margin:14px 0 6px; font-size:16px;}
+.helpbar{display:flex; align-items:center; justify-content:space-between; gap:12px;}
+.helpbar button{flex:none;}
+#toast{
+  position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:70;
+  background:var(--panel2); border:1px solid var(--acc); color:var(--text); border-radius:10px;
+  padding:10px 18px; font-size:13px; opacity:0; transition:opacity .3s; pointer-events:none; max-width:90vw;
+}
+#toast.show{opacity:1;}
+footer{color:var(--dim); font-size:11px; text-align:center; padding:4px 0 12px; line-height:1.6;}
+::-webkit-scrollbar{width:9px; height:9px;}
+::-webkit-scrollbar-thumb{background:var(--edge); border-radius:5px;}
+</style>
+</head>
+<body data-theme="classic">
+<div id="power">
+  <h1>DUB<b>STATION</b></h1>
+  <p>Dub live mixing station — everything runs in your browser, no file ever leaves your machine.</p>
+  <button id="powerBtn">POWER ON</button>
+  <p style="font-size:12px;">(the browser needs one click to allow audio)</p>
+</div>
+
+<div id="app">
+<header class="panel">
+  <div class="logo">DUB<b>STATION</b> <span style="font-size:12px;color:var(--dim);">V1.0</span></div>
+  <div class="hbtns">
+    <button class="mini" id="micBtn">MIC</button>
+    <button class="mini" id="midiBtn">MIDI</button>
+    <button class="mini" id="recBtn">&#9679; REC</button>
+    <button class="mini" id="saveBtn">SAVE</button>
+    <button class="mini" id="loadBtn">LOAD</button>
+    <button class="mini" id="themeBtn">SKIN</button>
+    <button class="mini" id="helpBtn">?</button>
+  </div>
+</header>
+
+<!-- MASTER + MONITEURS : en tête de l'interface — un mini VU long reste visible dans la barre repliée -->
+<section class="panel">
+  <h3>Master &amp; monitors <canvas class="minivu" id="miniVu" aria-label="master stereo VU"></canvas></h3>
+  <div class="oneline">
+    <div id="meters">
+      <div class="mwrap"><canvas class="mcv" id="vu" width="150" height="96"></canvas><div class="mlabel">VU L/R</div></div>
+      <div class="mwrap"><canvas class="mcv" id="spec" width="330" height="96"></canvas><div class="mlabel">Spectrum</div></div>
+    </div>
+    <div class="fxline" id="krMaster"></div>
+    <button class="tgl grn" id="limiter">LIMITER</button>
+  </div>
+</section>
+
+<!-- MICRO : juste sous le master & moniteurs — 3 zones + VU (mini dans la barre repliée, grand dans le module déplié) -->
+<section class="panel">
+  <h3>Mic <canvas class="minivu" id="micVu" aria-label="mic VU"></canvas></h3>
+  <div class="miczones">
+    <div class="miczone">
+      <div class="zlab">Gain &amp; EQ</div>
+      <div class="fxline" id="krMic"></div>
+    </div>
+    <div class="miczone">
+      <div class="zlab">Parametric EQ</div>
+      <div class="fxline" id="krMicPk"></div>
+    </div>
+    <div class="miczone">
+      <div class="zlab">FX sends</div>
+      <div class="fxline" id="krMicFx"></div>
+    </div>
+  </div>
+  <canvas class="micvu-big" id="micVuBig" aria-label="mic VU"></canvas>
+</section>
+
+<!-- KILL SWITCHES : au-dessus du module players, colonnes + graphe -->
+<section class="panel">
+  <h3>Kill switches <span class="killminis"><button class="tgl grn killmini" id="kSm" title="Kill SUB">SUB</button><button class="tgl grn killmini" id="kBm" title="Kill BASS">BASS</button><button class="tgl grn killmini" id="kMm" title="Kill MID">MID</button><button class="tgl grn killmini" id="kTm" title="Kill TOP">TOP</button></span><button class="tgl" id="isoByp">BYPASS ISO</button></h3>
+  <div class="killwrap">
+    <div class="killgrid">
+      <div class="kcol">
+        <button class="tgl grn" id="kS">KILL SUB</button>
+        <div class="kbody">
+          <div class="fxline kknobs" id="krKillS"></div>
+          <div class="vmeter" id="vmS"><div class="vgrad"></div><div class="vcover"></div><div class="vpeak"></div><div class="vled"></div></div>
+        </div>
+      </div>
+      <div class="kcol">
+        <button class="tgl grn" id="kB">KILL BASS</button>
+        <div class="kbody">
+          <div class="fxline kknobs" id="krKillB"></div>
+          <div class="vmeter" id="vmB"><div class="vgrad"></div><div class="vcover"></div><div class="vpeak"></div><div class="vled"></div></div>
+        </div>
+      </div>
+      <div class="kcol">
+        <button class="tgl grn" id="kM">KILL MID</button>
+        <div class="kbody">
+          <div class="fxline kknobs" id="krKillM"></div>
+          <div class="vmeter" id="vmM"><div class="vgrad"></div><div class="vcover"></div><div class="vpeak"></div><div class="vled"></div></div>
+        </div>
+      </div>
+      <div class="kcol">
+        <button class="tgl grn" id="kT">KILL TOP</button>
+        <div class="kbody">
+          <div class="fxline kknobs" id="krKillT"></div>
+          <div class="vmeter" id="vmT"><div class="vgrad"></div><div class="vcover"></div><div class="vpeak"></div><div class="vled"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="killviz"><canvas id="killGraph"></canvas></div>
+  </div>
+</section>
+
+<!-- PLAYERS A/B + CROSSFADER : sous le master, le micro et les kill switches -->
+<section class="panel">
+  <h3>Players <span class="fold-sum" id="foldSumPl"></span></h3>
+  <div class="prow">
+  <!-- DECK A -->
+  <section class="panel deck" id="deckA">
+    <h3>Player A <span class="fold-sum" id="foldSumA"></span></h3>
+    <div class="title" id="titleA">— no track —</div>
+    <div class="bar" id="barA"><div class="fill" id="barAf"></div><div class="tlabel" id="timeA">0:00 / 0:00</div></div>
+    <div class="transport">
+      <button class="tbtn play" id="playA">&#9654; PLAY</button>
+      <button class="tbtn" id="stopA">&#9632;</button>
+      <button class="tbtn" id="rewA">&#8630;</button>
+    </div>
+    <div class="krow" id="krA"></div>
+    <div class="pl" id="plA"></div>
+    <div class="transport">
+      <button class="mini" id="addA">+ ADD</button>
+      <button class="mini" id="prevA">&lt;&lt;</button>
+      <button class="mini" id="nextA">&gt;&gt;</button>
+      <button class="mini" id="loopA">LOOP</button>
+    </div>
+  </section>
+
+  <div class="xfcenter">
+    <div class="eqcols">
+      <div class="eqcol">
+        <div class="srcsel" id="srcA">
+          <button class="tgl on" id="srcA_deck">A</button>
+          <button class="tgl" id="srcA_line">LINE&nbsp;1</button>
+        </div>
+        <div class="fxline kknobs" id="krChA"></div>
+      </div>
+      <div class="eqcol">
+        <div class="srcsel" id="srcB">
+          <button class="tgl on" id="srcB_deck">B</button>
+          <button class="tgl" id="srcB_line">LINE&nbsp;2</button>
+        </div>
+        <div class="fxline kknobs" id="krChB"></div>
+      </div>
+    </div>
+    <span class="xftitle">Crossfader</span>
+    <div class="fader h" id="fadX"></div>
+  </div>
+
+  <!-- DECK B -->
+  <section class="panel deck" id="deckB">
+    <h3>Player B <span class="fold-sum" id="foldSumB"></span></h3>
+    <div class="title" id="titleB">— no track —</div>
+    <div class="bar" id="barB"><div class="fill" id="barBf"></div><div class="tlabel" id="timeB">0:00 / 0:00</div></div>
+    <div class="transport">
+      <button class="tbtn play" id="playB">&#9654; PLAY</button>
+      <button class="tbtn" id="stopB">&#9632;</button>
+      <button class="tbtn" id="rewB">&#8630;</button>
+    </div>
+    <div class="krow" id="krB"></div>
+    <div class="pl" id="plB"></div>
+    <div class="transport">
+      <button class="mini" id="addB">+ ADD</button>
+      <button class="mini" id="prevB">&lt;&lt;</button>
+      <button class="mini" id="nextB">&gt;&gt;</button>
+      <button class="mini" id="loopB">LOOP</button>
+    </div>
+  </section>
+  </div>
+</section>
+
+<div id="row1">
+  <!-- DUB SIREN : une ligne, knobs en 3 zones (synthèse & dégrad / gain & tone / envois fx) -->
+  <section class="panel">
+    <h3>Dub Siren <button class="firemini" id="sirenMini" title="Siren: hold to play">FIRE</button></h3>
+    <div class="oneline">
+      <button id="sirenBtn">FIRE</button>
+      <select id="sirPresetSel"></select>
+      <select id="sirWaveSel"></select>
+      <button class="tgl" id="chopBtn">CHOP</button>
+      <div class="miczones srzones">
+        <div class="miczone">
+          <div class="zlab">Synth &amp; degrade</div>
+          <div class="fxline" id="krSiren"></div>
+        </div>
+        <div class="miczone">
+          <div class="zlab">Gain &amp; tone</div>
+          <div class="fxline" id="krSirenGt"></div>
+        </div>
+        <div class="miczone">
+          <div class="zlab">FX sends</div>
+          <div class="fxline" id="krSirenFx"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SAMPLER : une ligne -->
+  <section class="panel">
+    <h3>Sampler</h3>
+    <div class="oneline">
+      <span class="wlab">SET</span>
+      <div class="grp" id="setBtns"></div>
+      <div class="pads padsline" id="pads"></div>
+      <div id="krSamp" style="display:flex;"></div>
+    </div>
+  </section>
+</div>
+
+<div id="row2">
+  <!-- DUB FILTRE : boutons + knobs sur une seule ligne -->
+  <section class="panel">
+    <h3>Dub Filter</h3>
+    <div class="oneline">
+      <div class="grp">
+        <button class="tgl" id="dubLP">LP</button>
+        <button class="tgl" id="dubHP">HP</button>
+        <button class="tgl grn" id="dubLFO">LFO</button>
+      </div>
+      <div class="fxline" id="krDub"></div>
+    </div>
+  </section>
+</div>
+
+<div id="row3">
+  <!-- TAPE ECHO : tout le module sur une ligne -->
+  <section class="panel">
+    <h3>Tape Echo</h3>
+    <div class="oneline">
+      <div class="fader h" id="fadEcho"><div class="flabel">TIME</div><div class="track"><div class="cap"></div></div></div>
+      <div class="fxline" id="krEcho1"></div>
+      <div class="fxline" id="krEcho2"></div>
+      <div class="grp">
+        <button class="tgl" id="ppBtn">PING-PONG</button>
+        <button class="tgl" id="slideBtn">SLIDE</button>
+        <button class="tgl" id="dblEcho">FILTER 2</button>
+        <button class="tgl" id="limEcho">LIMITER</button>
+        <button class="tgl grn" id="actEcho">ON</button>
+        <select id="echoDivSel" title="Tempo division (learned by TAP): 1/4 = one beat, 1 = one bar">
+          <option value="0.0625">1/16</option>
+          <option value="0.125">1/8</option>
+          <option value="0.25" selected>1/4</option>
+          <option value="0.5">1/2</option>
+          <option value="1">1</option>
+        </select>
+        <button class="mini" id="tapBtn">TAP</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- REVERB : tout le module sur une ligne -->
+  <section class="panel">
+    <h3>Reverb</h3>
+    <div class="oneline">
+      <div class="fxline" id="krRev"></div>
+      <div class="grp">
+        <button class="tgl" id="dblRev">FILTER 2</button>
+        <button class="tgl" id="limRev">LIMITER</button>
+        <button class="tgl grn" id="actRev">ON</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- EQ10 : pleine largeur, une seule ligne de knobs — en bas de l'interface -->
+<section class="panel">
+  <h3>10-band graphic EQ</h3>
+  <div class="eq10line">
+    <div class="fxline" id="eq10row"></div>
+    <button class="mini" id="eq10Reset">RESET</button>
+  </div>
+</section>
+
+<footer>DubStation V1.0 — help &amp; how it works: the <b>?</b> button, top right</footer>
+</div>
+
+<div id="help"><div class="card">
+  <div class="helpbar">
+    <h2 style="margin:0;">DubStation Help</h2>
+    <button class="mini" id="helpLang">FRANÇAIS</button>
+  </div>
+
+  <div id="helpEn">
+  <h2>Overview</h2>
+  <p>Live dub mixing station: two players with playlists, pull-up rewind and line inputs LINE&nbsp;1/LINE&nbsp;2, <b>4 kill switches</b> on 4 true ISO bands (frequency / resonance / parametric EQ / per-band volume — total cut), dub filter, <b>tape echo</b> (tape saturation, wow&nbsp;&amp;&nbsp;flutter, resonant filter, second filter), reverb (room, HF damping), <b>12-preset dub siren</b> with bitcrusher, chop and echo/reverb sends, 12-pad sampler with HP filter, mic with HP filter, low/mid/high EQ and parametric filter, per-player channel EQ, 10-band graphic EQ, crossfader, recording. Everything runs in your browser — no file ever leaves your machine.</p>
+
+  <h2>Folding interface</h2>
+  <p>Each module folds down to its title bar: click the title — the chevron on the left switches from a down triangle to a right triangle — and click again to unfold. The Players module holds both players: the whole module or each player alone can be folded separately. Folding is purely visual: sound and settings keep running. Each module's folded state is remembered by the browser: when you come back, modules stay folded the way you left them.</p>
+
+  <h2>Quick start</h2>
+  <p>Press «&nbsp;+ ADD&nbsp;» or drop your files on a player, PLAY, then switch with the crossfader. Each player has LOOP, &lt;&lt; / &gt;&gt; to move through the playlist, a click on the time bar to seek, and its own GAIN / SPEED (0.5× to 1.5×) / ECHO / REV knobs (the last two are the sends to the echo and the reverb). The ↩ button does a true tape rewind (pull-up): the audio runs backwards, accelerating like a tape being rewound, then the track restarts from the top by itself if it was playing (when stopped, you only hear the rewind).</p>
+
+  <h2>Channels &amp; crossfader</h2>
+  <p>Above the crossfader, each channel (A and B) has its source selector A&nbsp;/&nbsp;LINE&nbsp;1 (B&nbsp;/&nbsp;LINE&nbsp;2): the player or a line input of your audio interface — the selected source follows the same path (channel EQ → crossfader → dub filter → ISO). Each channel also has its low / mid / high EQ (±12&nbsp;dB). The crossfader blends the two sources (&larr; / &rarr; keys).</p>
+
+  <h2>10-band graphic EQ</h2>
+  <p>±12&nbsp;dB per band, 32&nbsp;Hz to 16&nbsp;kHz; RESET flattens everything. It sits after the ISO: it processes the players and line inputs, but also the siren, sampler and mic (everything feeding the master) — only the echo/reverb returns skip it, they go straight to the master.</p>
+
+  <h2>Kill switches — 4-band ISO filter</h2>
+  <p>The ISO filter splits the signal into 4 true bands (24&nbsp;dB/oct per edge, allpass-compensated cascade summing): each band lives around its FREQ centre, and the edges sit at the geometric midpoint between neighbouring centres — SUB below the SUB/BASS midpoint, BASS between the SUB/BASS and BASS/MID midpoints, MID between the BASS/MID and MID/TOP midpoints, TOP above the MID/TOP midpoint.</p>
+  <p>Under each kill: <b>FREQ</b> (the band centre — all four bands have it, TOP included), <b>RES</b> (resonance added to the Butterworth base of the edges and of the EQ bell — at 0 the sum of the 4 bands is mathematically flat: the output is exactly the source, with no colouring — raise it for the «&nbsp;singing kill&nbsp;»), <b>VOL</b> (-inf to +6&nbsp;dB: the band level, usable without killing) and <b>EQ</b> (the gain of the band's parametric EQ — a bell centred on FREQ: at 0 the EQ is off, negative scoops, positive boosts, ±15&nbsp;dB). The kill fully cuts its band (minus infinity — nothing gets through) and stiffens the edges of the neighbouring bands toward its zone (48&nbsp;dB/oct instead of 24): even frequencies near the edges stop passing, the cut is hard with no leak.</p>
+  <p>Each band's vertical meter shows its energy: calibrated to fill ~90% at normal volume (measured on the player bus after the dub filter and the ISO, independent of master volume — siren, sampler and mic don't light these meters, only the master VU reacts to their sound). Fixed colours: green up to 50%, yellow from 50 to 90%, red above 90% — and the meter goes dark when you kill that band.</p>
+  <p>Routing: the ISO filter and the dub filter only process the players and line inputs (LINE&nbsp;1 / LINE&nbsp;2 selected in the channels) — siren, sampler and mic run direct, and the echo/reverb returns go straight to the master, out of the ISO and the dub filter.</p>
+  <p>The module graph makes all of this visible: the live spectrum of the player bus (pale curve) and the response of the 4 bands rebuilt from your settings (orange curve, filled area = what passes) — the three vertical dashes are the edges (they follow the FREQ knobs and turn red on the killed side), RES swells the bumps as the edges pass, the EQ bell shows on its band, and a killed band collapses to the floor with red hatching while its neighbours' edges dive steeper — the live spectrum digs a hole exactly there.</p>
+  <p>The <b>BYPASS ISO</b> button (right of the title) takes the whole ISO out of the signal path in one click: the output becomes the exact dry path taken after the dub filter (the graph goes flat, whatever the settings and kills), and the band meters keep showing the energy each band processes behind the scenes.</p>
+
+  <h2>Dub Filter</h2>
+  <p>Isolator-style low-pass / high-pass: CUTOFF and RES, plus an LFO (rate + depth) for automatic sweeps. Sweep the filter during the echo for the «&nbsp;dub drop&nbsp;». Only processes the players and line inputs (A/B channels) — siren, sampler, mic and echo/reverb returns run direct (the returns go straight to the master).</p>
+
+  <h2>Tape Echo</h2>
+  <p>Tape style: tape saturation + wow &amp; flutter in the loop, repeats degrade like a real tape echo. TIME (fader), FEEDBACK, CUTOFF/RESO (resonant filter in the loop), DW (echo/dry blend), SAT (tape saturation), WOW (wow&nbsp;&amp;&nbsp;flutter). SLIDE: the time «&nbsp;glides&nbsp;» when you change it (the pitch drags down with it, like tape). TAP: learns the tempo by tapping (or the space bar) and sets the echo to it. DIV: tempo division for the echo time — 1/16, 1/8, 1/4 (one beat), 1/2 or 1 (one bar); change the division and the time recomputes from the last tapped tempo. PING-PONG switches to alternating stereo echoes, FILTER 2 adds extra filtering on the repeats, LIMITER protects the return, ON arms the module.</p>
+
+  <h2>Reverb</h2>
+  <p>ROOM = room size, DAMP = HF damping (warm tail), CUTOFF/RESO = resonant filter on the return, DW = reverb/dry blend. FILTER 2 fine-tunes the return, LIMITER protects it, ON arms the module.</p>
+
+  <h2>Master</h2>
+  <p>MASTER volume, LIMITER, and the echo and reverb return levels (ECHO RTN / REV RTN) — the returns go straight to the master, out of the ISO and the dub filter. The VU L/R and Spectrum monitors measure the master output.</p>
+
+  <h2>Dub Siren</h2>
+  <p>Hold FIRE to play (or the S key); when the module is folded, a small red FIRE stays in its title bar. Preset and waveform in dropdown menus, CHOP for rhythmic gating. Settings in 3 zones: SYNTH &amp; DEGRADE (BASE, SIN/SQR RATE &amp; DEPTH, BITS/S.RATE), GAIN &amp; TONE (level and filter), FX SENDS (ECHO SEND / REV SEND).</p>
+
+  <h2>Sampler</h2>
+  <p>12 pads × 4 sets: click an empty pad (or drop a file on it) to load a sample, click again to play it. Settings: GAIN, HPF (high-pass), ECHO and REV sends. Pad keys: Z X C V B N M , . ; / ' for pads 1 to 12.</p>
+
+  <h2>Mic</h2>
+  <p>Enable it with the MIC button at the top: built-in high-pass (85&nbsp;Hz default, adjustable), mic gain, low / mid / high EQ (same bands as the channels: 150&nbsp;Hz, 1&nbsp;kHz, 4&nbsp;kHz, ±12&nbsp;dB), parametric bell FREQ / RES / GAIN to scoop or highlight a specific frequency, and echo/reverb sends for on-the-fly toasting. The module sits at the top, on one line in three zones: gain &amp; EQ, parametric EQ, FX sends.</p>
+
+  <h2>Classic dub flow</h2>
+  <p>1) Cut TOP with its KILL (or scoop with the EQ10), 2) raise the echo time and FEEDBACK, 3) send the track to the echo (the player's ECHO knob), 4) sweep the DUB FILTER (LP/HP) or turn its LFO on, 5) release FIRE (pick a preset: WAIL, CHOP, YELP… add BITS / S.RATE degrade for grit and raise REV SEND to pin it in space), 6) fire samples. The echo repeats go through tape saturation + the resonant filter: they get darker every pass, like on a real tape echo.</p>
+
+  <h2>Keyboard</h2>
+  <p>
+  <kbd>?</kbd> help &nbsp;·&nbsp; <kbd>Q</kbd> play/pause A &nbsp;·&nbsp; <kbd>P</kbd> play/pause B &nbsp;·&nbsp; <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> kills SUB/BASS/MID/TOP &nbsp;·&nbsp; <kbd>5</kbd> toggles LP/HP &nbsp;·&nbsp; <kbd>F</kbd> filter LFO &nbsp;·&nbsp; <kbd>E</kbd> ping-pong &nbsp;·&nbsp; <kbd>Space</kbd> echo TAP &nbsp;·&nbsp; <kbd>S</kbd> siren (hold) &nbsp;·&nbsp; <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd><kbd>N</kbd><kbd>M</kbd><kbd>,</kbd><kbd>.</kbd><kbd>;</kbd><kbd>/</kbd><kbd>'</kbd> pads 1-12 &nbsp;·&nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> crossfader &nbsp;·&nbsp; <kbd>Esc</kbd> closes the help.
+  </p>
+  <h2>MIDI</h2>
+  <p>Plug your controller (Akai MIDImix…), click MIDI, then click a control and move a knob / press a pad. The mapping is saved in the browser.</p>
+  <h2>Presets &amp; saving</h2>
+  <p>SAVE exports all settings as JSON (and everything is kept locally automatically). LOAD restores. The sampler and the playlists fill by drag &amp; drop; the files themselves can't be remembered by the browser between sessions (security): keep your sample folders at hand.</p>
+  <p style="text-align:center;"><button class="mini" id="helpClose">Close</button></p>
+  </div>
+
+  <div id="helpFr" style="display:none;">
+  <h2>Présentation</h2>
+  <p>Station de mixage dub live&nbsp;: deux players avec playlists, rewind «&nbsp;pull-up&nbsp;» et entrées ligne LINE&nbsp;1/LINE&nbsp;2, <b>4 kill switches</b> sur 4 vraies bandes ISO (fréquence / résonance / EQ paramétrique / volume par bande — coupure totale), dub filtre, <b>écho à bandes</b> (saturation, wow&nbsp;&amp;&nbsp;flutter, filtre résonant, double filtre), reverbe (room, damping HF), <b>dub siren 12 presets</b> avec bitcrusher, chop et envois écho/réverbe, sampler 12 pads avec filtre HP, micro avec HP, EQ grave/médium/aigu et filtre paramétrique, EQ de tranche par player, EQ graphique 10 bandes, crossfader, enregistrement. Tout tourne dans votre navigateur, aucun fichier ne quitte votre machine.</p>
+
+  <h2>Interface repliable</h2>
+  <p>Chaque module se replie à la hauteur de sa barre de titre&nbsp;: clique sur son titre — le chevron à gauche passe du triangle vers le bas au triangle vers la droite — et reclique pour rouvrir. Le module Players contient les deux players&nbsp;: le module entier ou chaque player seul peut être replié séparément. Replier un module est purement visuel&nbsp;: le son et les réglages continuent de vivre. L'état replié de chaque module est mémorisé automatiquement par le navigateur&nbsp;: à ton retour, les modules restent repliés tels que tu les as laissés.</p>
+
+  <h2>Départ rapide</h2>
+  <p>«&nbsp;+ ADD&nbsp;» ou glisse tes fichiers sur un player, PLAY, puis bascule avec le crossfader. Chaque player a LOOP, &lt;&lt; / &gt;&gt; pour naviguer dans la playlist, un clic dans la barre de temps pour s'y déplacer, et ses réglages GAIN / SPEED (0.5× à 1.5×) / ECHO / REV (les deux derniers sont les envois vers l'écho et la reverbe). Le bouton ↩ fait un vrai rembobinage bande (pull-up)&nbsp;: le son repart à l'envers en accélérant comme une bande qu'on rembobine, puis le titre repart du début tout seul si la lecture était en cours (à l'arrêt, seul le son de rembobinage s'entend).</p>
+
+  <h2>Tranches &amp; crossfader</h2>
+  <p>Au-dessus du crossfader, chaque tranche (A et B) a son sélecteur de source A&nbsp;/&nbsp;LINE&nbsp;1 (B&nbsp;/&nbsp;LINE&nbsp;2)&nbsp;: le player ou l'entrée ligne de ton interface audio — la source choisie suit le même chemin (EQ de tranche → crossfader → dub filtre → ISO). Chaque tranche a aussi son EQ low / mid / high (±12&nbsp;dB). Le crossfader fond les deux sources (touches ← / →).</p>
+
+  <h2>10-band graphic EQ</h2>
+  <p>±12&nbsp;dB par bande, de 32&nbsp;Hz à 16&nbsp;kHz&nbsp;; RESET remet tout à plat. Elle est placée après l'ISO&nbsp;: elle traite les players et les entrées ligne, mais aussi la siren, le sampler et le micro (tout ce qui va vers le master) — seuls les retours écho/réverbe l'évitent, ils arrivent directement au master.</p>
+
+  <h2>Kill switches — filtre ISO 4 bandes</h2>
+  <p>Le filtre ISO découpe le signal en 4 vraies bandes (24&nbsp;dB/oct par bord, sommation en cascade compensée par passe-tout)&nbsp;: chaque bande vit autour de son centre FREQ, et les bords se placent au milieu géométrique entre deux centres voisins — SUB sous le milieu SUB/BASS, BASS entre les milieux SUB/BASS et BASS/MID, MID entre les milieux BASS/MID et MID/TOP, TOP au-dessus du milieu MID/TOP.</p>
+  <p>Sous chaque kill&nbsp;: <b>FREQ</b> (le centre de la bande — les quatre bandes l'ont, TOP compris), <b>RES</b> (résonance ajoutée à la base Butterworth des bords et de la cloche EQ — à 0 la somme des 4 bandes est mathématiquement plate&nbsp;: le son de sortie = exactement la source, sans aucune coloration — monte-la pour le «&nbsp;kill qui chante&nbsp;»), <b>VOL</b> (-inf à +6&nbsp;dB&nbsp;: le niveau de la bande, utilisable sans kill) et <b>EQ</b> (le gain de l'EQ paramétrique de la bande — une cloche centrée sur FREQ&nbsp;: à 0 l'EQ est inactif, en négatif il creuse, en positif il booste, ±15&nbsp;dB). Le kill coupe totalement sa bande (moins l'infini — plus rien ne passe) et raidit les bords des bandes voisines vers sa zone (48&nbsp;dB/oct au lieu de 24)&nbsp;: même les fréquences proches des bords ne passent plus, la coupure est franche sans fuite.</p>
+  <p>Le vumètre vertical de chaque bande affiche son énergie&nbsp;: calibré pour remplir ~90% à volume normal (mesure du bus players après le dub filtre et l'ISO, indépendante du volume master — siren, sampler et micro n'activent pas ces vumètres, seul le VU master réagit à leurs sons). Couleurs fixes&nbsp;: vert jusqu'à 50%, jaune de 50 à 90%, rouge au-dessus de 90% — et il s'éteint quand tu actives son kill.</p>
+  <p>Routage&nbsp;: le filtre ISO et le dub filtre ne traitent que les players et les entrées ligne (LINE&nbsp;1 / LINE&nbsp;2 sélectionnées dans les tranches) — la siren, le sampler et le micro passent en direct, et les retours écho/réverb arrivent directement au master, hors ISO et hors dub filtre.</p>
+  <p>Le graphe du module rend tout ça visible&nbsp;: le spectre live du bus players (courbe pâle) et la réponse reconstruite des 4 bandes d'après tes réglages (courbe orange, aire remplie = ce qui passe) — les trois tirets verticaux sont les bords (ils suivent les knobs FREQ, et passent en rouge côté zone tuée), la RES gonfle les bosses au passage des bords, la cloche EQ se voit sur sa bande, et une bande killée s'effondre au plancher avec hachures rouges pendant que les bords de ses voisines plongent plus raides — le spectre live creuse un trou exactement à cet endroit.</p>
+  <p>Le bouton <b>BYPASS ISO</b> (à droite du titre) sort l'ISO entier du chemin du son d'un clic&nbsp;: la sortie devient la voie sèche exacte prise après le dub filtre (le graphe passe à plat, indépendamment des réglages et des kills), et les vumètres de bande continuent de montrer l'énergie que chaque bande traite en coulisses.</p>
+
+  <h2>Dub Filter</h2>
+  <p>Passe-bas / passe-haut façon isolateur&nbsp;: CUTOFF et RES, plus un LFO (vitesse + profondeur) pour balayage automatique. Passe le filtre pendant l'écho pour le «&nbsp;dub drop&nbsp;». Ne traite que les players et les entrées ligne (tranches A/B) — siren, sampler, micro et retours écho/réverb passent en direct (les retours arrivent directement au master).</p>
+
+  <h2>Tape Echo</h2>
+  <p>Tape style&nbsp;: saturation bande + wow &amp; flutter dans la boucle, les répétitions se dégradent comme sur un vrai écho à bandes. TIME (fader), FEEDBACK, CUTOFF/RESO (filtre résonant dans la boucle), DW (mélange écho/son sec), SAT (saturation bande), WOW (wow&nbsp;&amp;&nbsp;flutter). SLIDE&nbsp;: le temps «&nbsp;glisse&nbsp;» quand tu le changes (le son descend avec, comme la bande). TAP&nbsp;: apprend le tempo en tapant (ou barre d'espace) et cale l'écho dessus. DIV&nbsp;: division du tempo pour le temps d'écho — 1/16, 1/8, 1/4 (un temps), 1/2 ou 1 (une mesure)&nbsp;; change la division et le temps se recalcule sur le dernier tempo tapé. PING-PONG passe en écho stéréo alterné, FILTER 2 ajoute un filtrage supplémentaire sur les répétitions, LIMITER protège le retour, ON arme le module.</p>
+
+  <h2>Reverbe</h2>
+  <p>ROOM = taille de la pièce, DAMP = amortissement des aigus (résonance chaude), CUTOFF/RESO = filtre résonant sur le retour, DW = mélange reverbe/son sec. FILTER 2 affine le retour, LIMITER protège, ON arme le module.</p>
+
+  <h2>Master</h2>
+  <p>MASTER, LIMITER, et les niveaux des retours écho et réverb (ECHO RTN / REV RTN) — ces retours arrivent directement au master, hors ISO et hors dub filtre. Les moniteurs VU L/R et Spectre mesurent la sortie master.</p>
+
+  <h2>Dub Siren</h2>
+  <p>Maintiens FIRE pour jouer (ou touche S)&nbsp;; quand le module est replié, un petit FIRE rouge reste dans sa barre de titre. Preset et onde en menu déroulant, CHOP pour le découpage rythmique. Réglages en 3 zones&nbsp;: SYNTH &amp; DEGRADE (BASE, SIN/SQR RATE &amp; DEPTH, BITS/S.RATE), GAIN &amp; TONE (niveau et filtre), ENVOIS FX (ECHO SEND / REV SEND).</p>
+
+  <h2>Sampler</h2>
+  <p>12 pads × 4 sets&nbsp;: clique sur un pad vide (ou glisse un fichier dessus) pour charger un sample, puis reclique pour le jouer. Réglages&nbsp;: GAIN, HPF (passe-haut), ECHO et REV en envois. Touches pads&nbsp;: Z X C V B N M , . ; / ' pour les pads 1 à 12.</p>
+
+  <h2>Mic</h2>
+  <p>Active-le avec le bouton MIC en haut&nbsp;: passe-haut intégré (85&nbsp;Hz par défaut, réglable), gain micro, EQ low / mid / high (mêmes bandes que les tranches&nbsp;: 150&nbsp;Hz, 1&nbsp;kHz, 4&nbsp;kHz, ±12&nbsp;dB), cloche paramétrique FREQ / RES / GAIN pour creuser ou mettre en valeur une fréquence précise, et envois écho et reverbe pour toasting à la volée. Le module est placé tout en haut, sur une ligne en trois zones&nbsp;: gain &amp; égaliseur, filtre paramétrique, départs fx.</p>
+
+  <h2>Flux dub classique</h2>
+  <p>1) Coupe TOP avec son KILL (ou creuse avec l'EQ10), 2) monte le temps d'écho et le FEEDBACK, 3) envoie le morceau vers l'écho (réglage ECHO du player), 4) balaye le DUB FILTRE (LP/HP) ou active son LFO, 5) relâche FIRE (choisis un preset&nbsp;: WAIL, CHOP, YELP… ajoute du DEGRADE (BITS / S.RATE) pour le côté sale et monte son REV&nbsp;SEND pour la plaquer dans l'espace), 6) déclenche des samples. Les répétitions de l'écho passent par la saturation bande + le filtre résonant&nbsp;: elles s'assombrissent à chaque tour, comme sur un vrai écho à bandes.</p>
+
+  <h2>Clavier</h2>
+  <p>
+  <kbd>?</kbd> aide &nbsp;·&nbsp; <kbd>Q</kbd> play/pause A &nbsp;·&nbsp; <kbd>P</kbd> play/pause B &nbsp;·&nbsp; <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> kills SUB/BASS/MID/TOP &nbsp;·&nbsp; <kbd>5</kbd> bascule LP/HP &nbsp;·&nbsp; <kbd>F</kbd> LFO filtre &nbsp;·&nbsp; <kbd>E</kbd> ping-pong &nbsp;·&nbsp; <kbd>Espace</kbd> TAP écho &nbsp;·&nbsp; <kbd>S</kbd> siren (maintenir) &nbsp;·&nbsp; <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd><kbd>N</kbd><kbd>M</kbd><kbd>,</kbd><kbd>.</kbd><kbd>;</kbd><kbd>/</kbd><kbd>'</kbd> pads 1-12 &nbsp;·&nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> crossfader &nbsp;·&nbsp; <kbd>Échap</kbd> ferme l'aide.
+  </p>
+  <h2>MIDI</h2>
+  <p>Branche ton contrôleur (Akai MIDImix…), clique MIDI, puis clique un réglage et bouge un potard / appuie un pad. Le mapping est sauvegardé dans le navigateur.</p>
+  <h2>Presets &amp; sauvegarde</h2>
+  <p>SAVE exporte tous les réglages en JSON (et tout est gardé en local automatiquement). LOAD restaure. Le sampler et les playlists se remplissent par glisser-déposer&nbsp;; les fichiers eux-mêmes ne peuvent pas être mémorisés par le navigateur entre deux sessions (sécurité)&nbsp;: garde tes dossiers samples sous la main.</p>
+    <p style="text-align:center;"><button class="mini" id="helpCloseFr">Fermer</button></p>
+  </div>
+</div></div>
+<div id="toast"></div><div id="toast"></div>
+<input type="file" id="fileDeckA" multiple accept="audio/*" hidden>
+<input type="file" id="fileDeckB" multiple accept="audio/*" hidden>
+<input type="file" id="filePad" accept="audio/*" hidden>
+<input type="file" id="filePreset" accept=".json" hidden>
+<script>
+/* ================= DUBSTATION v2 — station de mixage dub ================= */
+"use strict";
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+const f2 = v => (Math.round(v*100)/100).toFixed(2);
+let toastTimer = null;
+function toast(msg, ms=2200){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove("show"), ms);
+}
+function fmtTime(s){
+  if(!isFinite(s)) return "0:00";
+  s = Math.max(0, s|0); return (s/60|0) + ":" + String(s%60).padStart(2,"0");
+}
+/* registre global des contrôles (presets + MIDI) */
+const CTRL = {};
+
+/* ---------- fabrique de boutons à bascule (création dynamique) ---------- */
+function Toggle(parent, id, label, on, cb){
+  if(typeof parent === "string") parent = $(parent);
+  const b = document.createElement("button");
+  b.className = "tgl"; b.textContent = label; if(on) b.classList.add("on");
+  parent.appendChild(b);
+  const api = {
+    el:b, kind:"toggle", id,
+    get(){ return b.classList.contains("on") ? 1 : 0; },
+    set(v){ b.classList.toggle("on", !!v); cb && cb(!!v); }
+  };
+  b.addEventListener("click", ()=>{ if(MIDIlearning()) return; api.set(api.get()?0:1); saveState(); });
+  CTRL[id] = api; return api;
+}
+
+/* ---------- toggle sur bouton existant du HTML ---------- */
+function Tgl(id, on, cb){
+  const b = $(id);
+  b.classList.toggle("on", !!on);
+  const api = {
+    el:b, kind:"toggle", id,
+    get(){ return b.classList.contains("on") ? 1 : 0; },
+    set(v){ b.classList.toggle("on", !!v); cb && cb(!!v); }
+  };
+  b.addEventListener("click", ()=>{ if(MIDIlearning()) return; api.set(api.get()?0:1); saveState(); });
+  CTRL[id] = api; return api;
+}
+
+/* ---------- fabrique de potentiomètres ---------- */
+function Knob(parent, id, label, min, max, val, opts={}){
+  if(typeof parent === "string") parent = $(parent);
+  const root = document.createElement("div");
+  root.className = "knob" + (opts.lg ? " lg" : "") + (opts.sm ? " sm" : "");
+  root.innerHTML = '<div class="dial"></div><div class="klabel">'+label+'</div><div class="kval"></div>';
+  parent.appendChild(root);
+  const dial = root.querySelector(".dial"), kval = root.querySelector(".kval");
+  const log = !!opts.log, def = opts.def !== undefined ? opts.def : val;
+  const n2v = n => log ? min * Math.pow(max/min, n) : min + (max-min)*n;
+  const v2n = v => log ? Math.log(v/min) / Math.log(max/min) : (v-min)/(max-min);
+  const fmt = opts.fmt || (v => f2(v));
+  let norm = clamp(v2n(val), 0, 1), api;
+  function apply(){
+    const v = n2v(norm);
+    dial.style.setProperty("--rot", (-135 + 270*norm) + "deg");
+    kval.textContent = fmt(v);
+    opts.cb && opts.cb(v);
+  }
+  function drag(e){
+    e.preventDefault();
+    const y0 = e.touches ? e.touches[0].clientY : e.clientY, n0 = norm;
+    const move = ev=>{
+      const y = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      norm = clamp(n0 + (y0-y)/160, 0, 1); apply();
+    };
+    const up = ()=>{ window.removeEventListener("mousemove",move); window.removeEventListener("mouseup",up);
+      window.removeEventListener("touchmove",move); window.removeEventListener("touchend",up); saveState(); };
+    window.addEventListener("mousemove",move); window.addEventListener("mouseup",up);
+    window.addEventListener("touchmove",move,{passive:false}); window.addEventListener("touchend",up);
+  }
+  dial.addEventListener("mousedown", drag); dial.addEventListener("touchstart", drag, {passive:false});
+  dial.addEventListener("dblclick", ()=>{ norm = clamp(v2n(def),0,1); apply(); saveState(); });
+  api = {
+    el:root, kind:"knob", id,
+    get(){ return n2v(norm); },
+    getNorm(){ return norm; },
+    set(v){ norm = clamp(v2n(v),0,1); apply(); },
+    setNorm(n){ norm = clamp(n,0,1); apply(); }
+  };
+  CTRL[id] = api; apply(); return api;
+}
+
+/* ---------- fabrique de faders (reconstruit le conteneur, labels optionnels) ---------- */
+function Fader(id, val, opts={}){
+  const root = typeof id === "string" ? $(id) : id;
+  const html = (opts.ll ? '<div class="flabel">'+opts.ll+'</div>' : "") +
+    '<div class="track"><div class="cap"></div></div>' +
+    (opts.lr ? '<div class="flabel">'+opts.lr+'</div>' : "") +
+    (opts.ffmt ? '<div class="fval"></div>' : "");
+  root.innerHTML = html;
+  root.classList.add("fader"); if(opts.h) root.classList.add("h"); if(opts.sm) root.classList.add("sm");
+  const fid = opts.id || id;
+  const track = root.querySelector(".track"), cap = root.querySelector(".cap");
+  const fval = root.querySelector(".fval");
+  const def = opts.def !== undefined ? opts.def : val;
+  let v = val, api;
+  function apply(){
+    if(opts.h){ cap.style.left = (v * (track.clientWidth - cap.offsetWidth)) + "px"; }
+    else{ cap.style.top = ((1-v) * (track.clientHeight - cap.offsetHeight)) + "px"; }
+    if(fval) fval.textContent = opts.ffmt(v);
+    opts.cb && opts.cb(v);
+  }
+  function drag(e){
+    e.preventDefault();
+    const move = ev=>{
+      const p = ev.touches ? ev.touches[0] : ev;
+      const r = track.getBoundingClientRect();
+      if(opts.h){ v = clamp((p.clientX - r.left - cap.offsetWidth/2) / (r.width - cap.offsetWidth), 0, 1); }
+      else{ v = clamp(1 - (p.clientY - r.top - cap.offsetHeight/2) / (r.height - cap.offsetHeight), 0, 1); }
+      apply();
+    };
+    const up = ()=>{ window.removeEventListener("mousemove",move); window.removeEventListener("mouseup",up);
+      window.removeEventListener("touchmove",move); window.removeEventListener("touchend",up); saveState(); };
+    move(e); window.addEventListener("mousemove",move); window.addEventListener("mouseup",up);
+    window.addEventListener("touchmove",move,{passive:false}); window.addEventListener("touchend",up);
+  }
+  track.addEventListener("mousedown", drag); track.addEventListener("touchstart", drag, {passive:false});
+  track.addEventListener("dblclick", ()=>{ v = def; apply(); saveState(); });
+  api = { el:root, kind:"fader", id: fid, get(){return v;}, set(nv){ v = clamp(nv,0,1); apply(); } };
+  CTRL[fid] = api;
+  requestAnimationFrame(apply); return api;
+}
+
+/* ================= MOTEUR AUDIO ================= */
+let AC = null, N = {};   /* N = noeuds */
+const dB2g = d => Math.pow(10, d/20);
+
+/* courbe de saturation bande (tanh) — gain petit-signal unitaire : y = tanh(d*x)/d */
+function makeSatCurve(drive){
+  const n = 1024, c = new Float32Array(n), d = Math.max(0.2, drive);
+  for(let i=0;i<n;i++){
+    const x = (i/(n-1))*2 - 1;
+    c[i] = Math.tanh(d*x)/d;
+  }
+  return c;
+}
+
+/* impulse response reverbe : room (durée) + HFD (amortissement des aigus, one-pole) */
+function makeIR(seconds, hfd){
+  const rate = AC.sampleRate, len = Math.max(1, rate*seconds|0);
+  const buf = AC.createBuffer(2, len, rate);
+  const a = clamp(hfd/rate, 0, 0.98);   /* coefficient du passe-bas 1-pole */
+  for(let ch=0; ch<2; ch++){
+    const d = buf.getChannelData(ch);
+    let lp = 0;
+    for(let i=0;i<len;i++){
+      const env = Math.pow(1 - i/len, 2.6);
+      const x = (Math.random()*2-1) * env;
+      lp += a*(x-lp);
+      d[i] = lp * 1.6;
+    }
+  }
+  return buf;
+}
+
+/* AudioWorklet impossible en file:// : le dégradeur est un ScriptProcessor (voir buildGraph) */
+
+/* --- Butterworth & paramétrage Q ---
+   Les navigateurs récents (spéc révisée) interprètent le Q du lowpass/highpass comme
+   une résonance EN dB (|H(fc)| = 10^(Q/20)) ; les anciens comme un Q linéaire
+   (|H(fc)| = Q). La sonde dans buildGraph mesure |H(fc)| pour Q = 0.7071 et en
+   déduit BUTTER_Q : la valeur à donner aux biquads pour obtenir le Butterworth
+   analogique exact Qe = 1/√2 — condition de la sommation plate des 4 bandes.
+   Les types allpass et peaking restent TOUJOURS en Q linéaire (0.707). */
+var BUTTER_Q = 0.70710678, QIS_DB = false;
+function resoLin(v){ return QIS_DB ? Math.pow(10, (BUTTER_Q + v)/20) : BUTTER_Q + v; }
+
+function buildGraph(){
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  N.slideOn = true; N.dubLFOon = false;
+  const g = (v=1) => { const n = AC.createGain(); n.gain.value = v; return n; };
+  const bq = (type, f, q) => { const n = AC.createBiquadFilter(); n.type = type; n.frequency.value = f; if(q) n.Q.value = q; return n; };
+  /* sonde de paramétrage Q : réponse d'un lowpass Q=0.7071 à sa coupure —
+     -3.01 dB => Q linéaire (anciens navigateurs) ; +0.71 dB => Q en dB (spéc révisée) */
+  const QPROBE = (() => {
+    const fr = new Float32Array([300]), mg = new Float32Array(1), ph = new Float32Array(1);
+    const n = AC.createBiquadFilter(); n.type = "lowpass"; n.frequency.value = 300; n.Q.value = 0.70710678;
+    n.getFrequencyResponse(fr, mg, ph); return mg[0];
+  })();
+  QIS_DB = QPROBE > 0.9; BUTTER_Q = QIS_DB ? -3.0102999566398 : 0.70710678;
+
+  /* --- sommation des sources --- */
+  N.mix = g(1);
+
+  /* --- ISO 4 bandes VRAIES : découpe en CASCADE 24 dB/oct + compensation passe-tout ---
+     SUB < fS < BASS < fB < MID < fM < TOP — les bords se partagent en cascade :
+     SUB = LP·LP@E0, BASS = HP·HP@E0 puis LP·LP@E1, MID = HP·HP@E0 puis HP·HP@E1
+     puis LP·LP@E2, TOP = HP·HP@E0·E1·E2. Chaque bande qui reste au-dessus d'une
+     paire emporte son passe-tout de compensation (la somme d'une paire LR4 = exactement
+     un passe-tout d'ordre 2) : SUB porte AP@E1·AP@E2, BASS porte AP@E2 — les phases
+     se réalignent et la SOMME DES 4 BANDES EST MATHÉMATIQUEMENT PLATE à réglages
+     neutres (VOL 0 dB, EQ 0, RÉSO 0) : le son de sortie = exactement la source.
+     + un EQ paramétrique (cloche au centre FREQ) + un gain : VOL quand pas de kill,
+     0 exact = coupure totale (moins l'infini).
+     RÉSO s'AJOUTE au Q Butterworth 0.707 : montée = bords résonants (le « kill qui chante ») */
+  N.iso = [[],[],[],[]]; N.isoG = []; N.isoSum = g(1);
+  for(let i=0;i<4;i++) N.isoG.push(g(1));
+  const isoC = [60,200,1200,6500];           /* centre FREQ de chaque bande */
+  const isoF = [60,200,1200];
+  const isoSpec = [
+    [["lowpass",0],["lowpass",0],["allpass",1],["allpass",2]],
+    [["highpass",0],["highpass",0],["lowpass",1],["lowpass",1],["allpass",2]],
+    [["highpass",0],["highpass",0],["highpass",1],["highpass",1],["lowpass",2],["lowpass",2]],
+    [["highpass",0],["highpass",0],["highpass",1],["highpass",1],["highpass",2],["highpass",2]]
+  ];
+  /* EQ paramétrique par bande : cloche (peaking) centrée sur FREQ —
+     gain 0 dB = EQ inactif (totalement transparent), Q suit RÉSO */
+  N.isoP = isoC.map(fr => bq("peaking", fr, 0.70710678));
+  N.isoE = isoSpec.map(b=>b.map(x=>x[1]));   /* bord de bande de chaque biquad */
+  isoSpec.forEach((b,i)=>{
+    b.forEach(x=>{ N.iso[i].push(bq(x[0], isoF[x[1]], x[0] === "allpass" ? 0.70710678 : BUTTER_Q)); });
+    for(let k=0;k<N.iso[i].length-1;k++) N.iso[i][k].connect(N.iso[i][k+1]);
+    N.iso[i][N.iso[i].length-1].connect(N.isoP[i]);   /* EQ paramétrique dans sa bande */
+    N.isoP[i].connect(N.isoG[i]);
+    N.isoG[i].connect(N.isoSum);
+  });
+  /* étages de raidissement du kill : 2 biquads de plus par bord (24 -> 48 dB/oct).
+     Débranchés par défaut ; dès qu'une bande est killée, SEULE la bande vivante qui
+     fait face au bord de la zone tuée reçoit les étages (XL = LP bord haut,
+     XH = HP bord bas). Q fixe 0.7 Butterworth : de la pente en plus, pas de
+     résonance empilée. */
+  N.isoXL = []; N.isoXH = []; N.isoSig = "";
+  for(let e=0;e<3;e++){
+    N.isoXL.push([bq("lowpass", isoF[e], BUTTER_Q), bq("lowpass", isoF[e], BUTTER_Q)]);
+    N.isoXH.push([bq("highpass", isoF[e], BUTTER_Q), bq("highpass", isoF[e], BUTTER_Q)]);
+  }
+  /* passe-tout de compensation du kill : UN par bande vivante et par bord raidi.
+     phase(LP4@e) = phase(HP4@e) = phase(AP2@e) exactement (sur le cercle unité, s⁴
+     reste réel positif après la bilinéaire) — donc un étage LR4 en plus d'un côté
+     d'un bord + un passe-tout de l'autre chez chaque autre bande vivante décale
+     TOUTES les phases pareil : les paires LR4 des bords vivants restent
+     complémentaires (somme = passe-tout) et la courbe reste plate hors kill. */
+  N.isoAP = [];
+  for(let i=0;i<4;i++){
+    N.isoAP.push([]);
+    for(let e=0;e<3;e++) N.isoAP[i].push(bq("allpass", isoF[e], 0.70710678));
+  }
+  /* --- EQ10 graphique (bandes fixes, ±12 dB) --- */
+  const F10 = [32,63,125,250,500,1000,2000,4000,8000,16000];
+  N.e10 = F10.map(fr => bq("peaking", fr, 1.0));
+
+  /* --- DUB FILTRE + LFO — branché sur le bus players uniquement --- */
+  N.dubF = bq("lowpass", 18000, 1.2);
+  N.mix.connect(N.dubF); N.iso.forEach(arr=>N.dubF.connect(arr[0]));
+  N.dubLFO = AC.createOscillator(); N.dubLFO.type = "sine"; N.dubLFO.frequency.value = 0.5;
+  N.dubLFOg = g(0); N.dubLFO.connect(N.dubLFOg); N.dubLFOg.connect(N.dubF.frequency); N.dubLFO.start();
+
+  /* --- chaîne : mix → dub filtre → ISO 4 bandes → eq10 ← bus direct ---
+     sortie ISO en deux voies : isoWet (sommation des bandes) et isoDry (voie sèche
+     prise après le dub filtre) — le BYPASS bascule de l'une à l'autre par rampe */
+  N.isoWet = g(1); N.isoDry = g(0);
+  N.dubF.connect(N.isoDry);
+  N.isoSum.connect(N.isoWet);
+  N.isoWet.connect(N.e10[0]); N.isoDry.connect(N.e10[0]);
+  for(let i=0;i<9;i++) N.e10[i].connect(N.e10[i+1]);
+  /* bus direct : siren, sampler et micro contournent le filtre ISO et le dub filtre
+     (réservés aux players et aux entrées ligne — branchées sur les tranches A/B dans
+     makeDeck, donc elles suivent le chemin EQ de tranche -> crossfader -> N.mix) */
+  N.mixDirect = g(1);
+  N.mixDirect.connect(N.e10[0]);
+  N.preMaster = g(1); N.e10[9].connect(N.preMaster);
+
+  /* --- ECHO À BANDES --- */
+  /* tête d'écriture partagée : saturation + filtre résonant (boucle et entrée y passent) */
+  N.echoBus = g(1);
+  N.echoAct = g(1);            N.echoBus.connect(N.echoAct);
+  N.eSatIn = g(1);             N.echoAct.connect(N.eSatIn);
+  N.eSat = AC.createWaveShaper(); N.eSat.curve = makeSatCurve(2); N.eSat.oversample = "2x";
+  N.eSatIn.connect(N.eSat);
+  N.eF = bq("lowpass", 1363, 2.0);
+  N.eSat.connect(N.eF);
+  N.eSum = g(1);               N.eF.connect(N.eSum);
+  /* chaîne ping-pong + chaîne normale */
+  N.ppIn = g(0); N.nnIn = g(1); N.eSum.connect(N.ppIn); N.eSum.connect(N.nnIn);
+  N.ppD1 = AC.createDelay(2.0); N.ppD2 = AC.createDelay(2.0); N.nnD = AC.createDelay(2.0);
+  N.ppD1.delayTime.value = 0.375; N.ppD2.delayTime.value = 0.375; N.nnD.delayTime.value = 0.375;
+  N.panL = AC.createStereoPanner(); N.panL.pan.value = -0.9;
+  N.panR = AC.createStereoPanner(); N.panR.pan.value = 0.9;
+  N.panC = AC.createStereoPanner();
+  N.ppFB = g(0.55); N.nnFB = g(0.55);
+  N.ppIn.connect(N.ppD1);
+  N.ppD1.connect(N.panL); N.panL.connect(N.eWet = g(1));
+  N.ppD1.connect(N.ppD2);
+  N.ppD2.connect(N.panR); N.panR.connect(N.eWet);
+  N.ppD2.connect(N.ppFB); N.ppFB.connect(N.eSatIn);
+  N.nnIn.connect(N.nnD);
+  N.nnD.connect(N.panC); N.panC.connect(N.eWet);
+  N.nnD.connect(N.nnFB); N.nnFB.connect(N.eSatIn);
+  /* wow & flutter sur le temps de bande */
+  N.wowLFO = AC.createOscillator(); N.wowLFO.type = "sine"; N.wowLFO.frequency.value = 0.6;
+  N.wowG = g(0); N.wowLFO.connect(N.wowG); N.wowLFO.start();
+  N.flutLFO = AC.createOscillator(); N.flutLFO.type = "sine"; N.flutLFO.frequency.value = 6.3;
+  N.flutG = g(0); N.flutLFO.connect(N.flutG); N.flutLFO.start();
+  N.wowG.connect(N.ppD1.delayTime); N.wowG.connect(N.ppD2.delayTime); N.wowG.connect(N.nnD.delayTime);
+  N.flutG.connect(N.ppD1.delayTime); N.flutG.connect(N.ppD2.delayTime); N.flutG.connect(N.nnD.delayTime);
+  /* double filtre optionnel sur la sortie mouillée */
+  N.eDblIn = g(0); N.eDblHP = bq("highpass", 250, 0.7); N.eDblLP = bq("lowpass", 4000, 0.7);
+  N.eDblBy = g(1); N.eWet.connect(N.eDblIn); N.eDblIn.connect(N.eDblHP); N.eDblHP.connect(N.eDblLP);
+  N.eWet.connect(N.eDblBy);
+  N.eDblOut = g(1); N.eDblLP.connect(N.eDblOut); N.eDblBy.connect(N.eDblOut);
+  /* limiteur + retour */
+  N.eLim = AC.createDynamicsCompressor();
+  N.eLim.threshold.value = -12; N.eLim.knee.value = 6; N.eLim.ratio.value = 8;
+  N.eLim.attack.value = 0.003; N.eLim.release.value = 0.15;
+  N.eLimOut = g(1); N.eLimByp = g(0);
+  N.eDblOut.connect(N.eLim); N.eLim.connect(N.eLimOut);
+  N.eDblOut.connect(N.eLimByp);
+  N.echoDw = g(0.8); N.eLimOut.connect(N.echoDw); N.eLimByp.connect(N.echoDw);
+  N.echoDw.connect(N.preMaster);   /* retour écho : directement au master (hors ISO, dub filtre et EQ10) */
+
+  /* --- REVERBE --- */
+  N.revBus = g(1);
+  N.revAct = g(1);             N.revBus.connect(N.revAct);
+  N.conv = AC.createConvolver(); N.conv.buffer = makeIR(2.2, 8000);
+  N.revAct.connect(N.conv);
+  N.revF = bq("lowpass", 2230, 2.0);
+  N.conv.connect(N.revF);
+  N.rDblIn = g(0); N.rDblHP = bq("highpass", 200, 0.7);
+  N.rDblBy = g(1); N.revF.connect(N.rDblIn); N.rDblIn.connect(N.rDblHP);
+  N.revF.connect(N.rDblBy);
+  N.rDblOut = g(1); N.rDblHP.connect(N.rDblOut); N.rDblBy.connect(N.rDblOut);
+  N.revLim = AC.createDynamicsCompressor();
+  N.revLim.threshold.value = -14; N.revLim.knee.value = 6; N.revLim.ratio.value = 6;
+  N.revLim.attack.value = 0.004; N.revLim.release.value = 0.2;
+  N.revLimOut = g(1); N.revLimByp = g(0);
+  N.rDblOut.connect(N.revLim); N.revLim.connect(N.revLimOut);
+  N.rDblOut.connect(N.revLimByp);
+  N.revDw = g(0.8); N.revLimOut.connect(N.revDw); N.revLimByp.connect(N.revDw);
+  N.revDw.connect(N.preMaster);   /* retour réverb : directement au master (hors ISO, dub filtre et EQ10) */
+
+  /* --- SIREN : osc → drive → dégradeur (worklet) → tone → env → gain --- */
+  N.sirDrive = AC.createWaveShaper(); N.sirDrive.curve = makeSatCurve(1.3); N.sirDrive.oversample = "2x";
+  N.sirTone = bq("lowpass", 12000, 0.7);
+  N.sirEnv = g(1);
+  N.sirGain = g(dB2g(-6)); N.sirEcho = g(0.25); N.sirRev = g(0.1);
+  N.sirDrive.connect(N.sirTone); N.sirTone.connect(N.sirEnv);
+  N.sirEnv.connect(N.sirGain); N.sirGain.connect(N.mixDirect);
+  N.sirGain.connect(N.sirEcho); N.sirEcho.connect(N.echoBus);
+  N.sirGain.connect(N.sirRev); N.sirRev.connect(N.revBus);   /* envoi réverbe : même bus que sampler et micro */
+  N.lfoS = AC.createOscillator(); N.lfoS.type = "sine"; N.lfoS.frequency.value = 2;
+  N.lfoSg = g(0); N.lfoS.connect(N.lfoSg); N.lfoS.start();
+  N.lfoQ = AC.createOscillator(); N.lfoQ.type = "square"; N.lfoQ.frequency.value = 4;
+  N.lfoQg = g(0); N.lfoQ.connect(N.lfoQg); N.lfoQ.start();
+  N.chopD = g(0); N.lfoQ.connect(N.chopD); N.chopD.connect(N.sirEnv.gain);
+  /* formes d'onde custom (pulse 25%) */
+  const nH = 40, re = new Float32Array(nH), im = new Float32Array(nH);
+  for(let h=1; h<nH; h++){ im[h] = (2/(h*Math.PI)) * Math.sin(h*Math.PI*0.25); }
+  N.pulseWave = AC.createPeriodicWave(re, im);
+  /* dégradeur : ScriptProcessor (fonctionne partout, y compris en file://) */
+  N.sirDegState = {bits:16, hold:1};
+  N.sirDeg = AC.createScriptProcessor(1024, 1, 1);
+  N.sirDeg.onaudioprocess = e=>{
+    const inp = e.inputBuffer.getChannelData(0), out = e.outputBuffer.getChannelData(0);
+    const st = N.sirDegState, steps = Math.pow(2, st.bits) - 1;
+    let ph = 0, held = 0;
+    for(let k=0;k<out.length;k++){
+      if(ph <= 0){ ph = st.hold; held = Math.round(inp[k]*steps)/steps; }
+      out[k] = held; ph--;
+    }
+  };
+  N.sirDrive.connect(N.sirDeg); N.sirDeg.connect(N.sirTone);
+
+  /* --- SAMPLER : bus → HP → gain → mixDirect (hors ISO) + envois --- */
+  N.sampBus = g(1); N.sampHP = bq("highpass", 85, 0.7); N.sampGain = g(dB2g(-3));
+  N.sampEcho = g(0.15); N.sampRev = g(0.1);
+  N.sampBus.connect(N.sampHP); N.sampHP.connect(N.sampGain); N.sampGain.connect(N.mixDirect);
+  N.sampGain.connect(N.sampEcho); N.sampEcho.connect(N.echoBus);
+  N.sampGain.connect(N.sampRev); N.sampRev.connect(N.revBus);
+
+  /* --- MICRO (chaînage à l'activation) --- */
+  N.micHP = bq("highpass", 85, 0.7); N.micGain = g(0);
+  N.micEcho = g(0); N.micRev = g(0); N.micReady = false;
+  /* EQ micro : grave / médium / aigu (mêmes bandes que les tranches) + cloche paramétrique.
+     Chaîne pré-câblée : HP → grave → médium → aigu → paramétrique → gain micro. */
+  N.micEq = [bq("lowshelf",150), bq("peaking",1000,0.9), bq("highshelf",4000)];
+  N.micPk = bq("peaking",800,2);
+  N.micHP.connect(N.micEq[0]); N.micEq[0].connect(N.micEq[1]);
+  N.micEq[1].connect(N.micEq[2]); N.micEq[2].connect(N.micPk); N.micPk.connect(N.micGain);
+  /* analyseur du niveau micro : prélèvement APRÈS le gain micro (ce qui part vraiment
+     dans la matrice) — muet tant que MIC est off, comme le son */
+  N.micAn = AC.createAnalyser(); N.micAn.fftSize = 512;
+  N.micGain.connect(N.micAn);
+
+  /* --- MASTER : limiteur + volume + analyseurs + enregistrement --- */
+  N.limiter = AC.createDynamicsCompressor();
+  N.limiter.threshold.value = -6; N.limiter.knee.value = 8; N.limiter.ratio.value = 12;
+  N.limiter.attack.value = 0.004; N.limiter.release.value = 0.18;
+  N.limiterByp = g(0); N.limiterOut = g(1);
+  N.preMaster.connect(N.limiter); N.limiter.connect(N.limiterOut);
+  N.preMaster.connect(N.limiterByp); N.limiterByp.connect(N.master = g(0.9));
+  N.limiterOut.connect(N.master);
+  N.anL = AC.createAnalyser(); N.anR = AC.createAnalyser(); N.anL.fftSize = N.anR.fftSize = 512;
+  N.anSpec = AC.createAnalyser(); N.anSpec.fftSize = 2048;
+  N.split = AC.createChannelSplitter(2);
+  N.master.connect(N.split); N.split.connect(N.anL, 0); N.split.connect(N.anR, 1);
+  N.master.connect(N.anSpec);
+  /* analyseur dédié aux vumètres par bande : bus players uniquement (sortie de la chaîne
+     dub filtre + ISO, avant l'EQ10) — la siren, le sampler et le micro ne les activent pas */
+  N.anBands = AC.createAnalyser(); N.anBands.fftSize = 2048; N.anBands.smoothingTimeConstant = 0.55;
+  N.isoSum.connect(N.anBands);
+  N.recDest = AC.createMediaStreamDestination(); N.master.connect(N.recDest);
+  N.master.connect(AC.destination);
+}
+
+/* changement de temps d'écho façon bande : glissement (pitch drag) ou rapide */
+function setEchoTime(t){
+  if(!AC || !N.ppD1) return;
+  const now = AC.currentTime, tc = N.slideOn ? 0.35 : 0.03;
+  N.ppD1.delayTime.setTargetAtTime(t, now, tc);
+  N.ppD2.delayTime.setTargetAtTime(t, now, tc);
+  N.nnD.delayTime.setTargetAtTime(t, now, tc);
+}
+/* mapping dB -> gain pour les knobs de niveau */
+function fmtDb(v){ return (v<=-59 ? "-inf" : f2(v)) + " dB"; }
+function gainFromDb(v){ return dB2g(v <= -59 ? -90 : v); }
+</script>
+<script>
+/* ================= INTERFACES & INSTRUMENTS ================= */
+
+let deckA = null, deckB = null;
+let killState = [0,0,0,0];
+var killDirty = true;   /* le graphe du kill doit recalculer la courbe de réponse */
+var isoByp = false;   /* BYPASS ISO : la voie sèche remplace la sommation des bandes */
+function setIsoBypass(v){
+  isoByp = !!v;
+  if(N.isoWet && AC){
+    isoGainTo(N.isoWet.gain, isoByp ? 0 : 1, 0.02);
+    isoGainTo(N.isoDry.gain, isoByp ? 1 : 0, 0.02);
+  }
+  killDirty = true;
+}
+
+/* ---------- application des réglages vers les noeuds ---------- */
+/* rampe très courte : le kill reste « raide » à l'oreille mais ne claque pas */
+function isoGainTo(p, v, tc){
+  const now = AC.currentTime;
+  p.cancelScheduledValues(now);
+  p.setValueAtTime(p.value, now);
+  p.linearRampToValueAtTime(v, now + tc);
+}
+/* chaîne complète d'une bande selon les kills : biquads de bande, raidisseurs du SEUL
+   bord qui fait face à une bande tuée (24 -> 48 dB/oct), et compensations passe-tout
+   sur les autres bandes vivantes (même phase que l'étage ajouté en face, donc les
+   paires LR4 des bords vivants restent complémentaires : AUCUN creux hors kill).
+   EQ paramétrique toujours en fin de chaîne ; bande killée = chaîne neutre (son gain
+   est à 0 de toute façon). */
+function isoChain(i){
+  const chain = N.iso[i].slice();
+  if(!killState[i]){
+    for(let e=0;e<3;e++){
+      const bl = !killState[e], ab = !killState[e+1];
+      if(bl === ab) continue;                 /* bord vivant-vivant ou mort-mort : on n'y touche pas */
+      if(bl){                                 /* bande du haut tuée : LP raidis sur la bande e */
+        if(i === e) chain.push(N.isoXL[e][0], N.isoXL[e][1]);
+        else chain.push(N.isoAP[i][e]);       /* passe-tout de phase chez les autres vivantes */
+      } else {                                /* bande du bas tuée : HP raidis sur la bande e+1 */
+        if(i === e+1) chain.push(N.isoXH[e][0], N.isoXH[e][1]);
+        else chain.push(N.isoAP[i][e]);
+      }
+    }
+  }
+  chain.push(N.isoP[i]);
+  return chain;
+}
+function rewireIso(i){
+  const chain = isoChain(i);
+  N.iso[i].forEach(f=>f.disconnect());
+  if(i>0) N.isoXH[i-1].forEach(f=>f.disconnect());
+  if(i<3) N.isoXL[i].forEach(f=>f.disconnect());
+  N.isoAP[i].forEach(f=>f.disconnect());
+  N.isoP[i].disconnect();
+  for(let k=0;k<chain.length-1;k++) chain[k].connect(chain[k+1]);
+  chain[chain.length-1].connect(N.isoG[i]);
+}
+/* centres FREQ des 4 bandes, toujours ordonnés (SUB < BASS < MID < TOP) */
+function isoCenters(){
+  let cS = CTRL.kSf ? CTRL.kSf.get() : 60, cB = CTRL.kBf ? CTRL.kBf.get() : 200,
+      cM = CTRL.kMf ? CTRL.kMf.get() : 1200, cT = CTRL.kTf ? CTRL.kTf.get() : 6500;
+  cS = Math.min(cS, cB*0.8); cB = Math.min(cB, cM*0.8); cM = Math.min(cM, cT*0.8);
+  return [cS, cB, cM, cT];
+}
+function applyKills(){
+  if(!N.isoG || !AC) return;
+  const ids = ["S","B","M","T"];
+  const C = isoCenters();
+  const ED = [Math.sqrt(C[0]*C[1]), Math.sqrt(C[1]*C[2]), Math.sqrt(C[2]*C[3])];  /* bords = milieux géométriques entre centres */
+  for(let i=0;i<4;i++){
+    const qk = CTRL["k"+ids[i]+"q"], vk = CTRL["k"+ids[i]+"v"], ek = CTRL["k"+ids[i]+"e"];
+    const q = BUTTER_Q + (qk ? qk.get() : 0);    /* RÉSO ajouté à la base Butterworth : 0 = plat exact */
+    N.iso[i].forEach((f,k)=>{ f.frequency.value = ED[N.isoE[i][k]]; f.Q.value = f.type === "allpass" ? 0.70710678 : q; });
+    N.isoP[i].frequency.value = C[i]; N.isoP[i].Q.value = resoLin(qk ? qk.get() : 0);   /* cloche = toujours Q linéaire */
+    N.isoP[i].gain.value = ek ? ek.get() : 0;    /* cloche EQ : 0 dB = inactive */
+    const v = vk ? vk.get() : 0;
+    const gv = killState[i] ? 0 : (v <= -59 ? 0 : Math.pow(10, v/20));
+    isoGainTo(N.isoG[i].gain, gv, killState[i] ? 0.005 : 0.02);
+  }
+  /* les étages de raidissement et les compensations suivent les bords FREQ */
+  for(let e=0;e<3;e++){
+    N.isoXL[e].forEach(f=>f.frequency.value = ED[e]);
+    N.isoXH[e].forEach(f=>f.frequency.value = ED[e]);
+    for(let i=0;i<4;i++) N.isoAP[i][e].frequency.value = ED[e];
+  }
+  /* recâblage uniquement quand un kill change (pas à chaque tick de knob) */
+  const sig = killState.join("");
+  if(sig !== N.isoSig){ N.isoSig = sig; for(let i=0;i<4;i++) rewireIso(i); }
+  killDirty = true;   /* le graphe du kill switch redessine sa courbe de réponse */
+}
+let irTimer = null;
+function regenIR(){
+  clearTimeout(irTimer);
+  irTimer = setTimeout(()=>{
+    if(N.conv && CTRL.revRoom) N.conv.buffer = makeIR(CTRL.revRoom.get(), CTRL.revHfd.get());
+  }, 250);
+}
+function lfoDepth(){
+  if(!N.lfoSg || !CTRL.lfoSn || !CTRL.lfoQn) return;
+  const base = CTRL.sirBase.get();
+  N.lfoSg.gain.value = base * (Math.pow(2, CTRL.lfoSn.get()/1200) - 1);
+  N.lfoQg.gain.value = base * (Math.pow(2, CTRL.lfoQn.get()/1200) - 1);
+}
+function postDegrade(){
+  if(!N.sirDegState || !CTRL.sirBits || !CTRL.sirSr) return;
+  N.sirDegState.bits = Math.max(1, Math.round(16 - CTRL.sirBits.get()*12));
+  N.sirDegState.hold = 1 + Math.round(CTRL.sirSr.get()*95);
+}
+
+/* ---------- tranche de canal : source (player / entrée ligne) ---------- */
+/* chaque colonne au-dessus du crossfader = EQ grave/médium/aigu de la tranche
+   + sélecteur A / LINE 1 (B / LINE 2) ; la source choisie suit le chemin player :
+   EQ de tranche -> crossfader -> dub filtre -> ISO */
+let chanSrc = {A:"deck", B:"deck"};
+function setChanSrc(side, src){
+  chanSrc[side] = src;
+  $("src"+side+"_deck").classList.toggle("on", src==="deck");
+  $("src"+side+"_line").classList.toggle("on", src==="line");
+  applyChanSrc(side);
+  if(src==="line") ensureLine(side==="A" ? 1 : 2);
+}
+function applyChanSrc(side){
+  if(!AC || !N["sel"+side+"D"]) return;
+  const now = AC.currentTime, deck = chanSrc[side]==="deck";
+  N["sel"+side+"D"].gain.setTargetAtTime(deck ? 1 : 0, now, 0.015);
+  N["sel"+side+"L"].gain.setTargetAtTime(deck ? 0 : 1, now, 0.015);
+}
+function chanSrcCtl(side){
+  const api = {
+    el: $("src"+side), kind:"toggle", id:"src"+side,
+    get(){ return chanSrc[side]==="line" ? 1 : 0; },
+    set(v){ setChanSrc(side, v ? "line" : "deck"); }
+  };
+  CTRL["src"+side] = api;
+  $("src"+side+"_deck").addEventListener("click", ()=>{
+    if(MIDIlearning()) return;
+    if(chanSrc[side] !== "deck"){ setChanSrc(side, "deck"); saveState(); }
+  });
+  $("src"+side+"_line").addEventListener("click", ()=>{
+    if(MIDIlearning()) return;
+    if(chanSrc[side] !== "line"){ setChanSrc(side, "line"); saveState(); }
+  });
+}
+
+/* ---------- création des contrôles ---------- */
+function buildControls(){
+  const sm = {sm:1};
+  /* decks A/B */
+  Knob("krA","gainA","Gain",-60,6,0,{fmt:fmtDb,cb:v=>{ if(N.gA) N.gA.gain.value = gainFromDb(v); }});
+  Knob("krA","speedA","Speed",0.5,1.5,1,{def:1,fmt:v=>f2(v)+"x",cb:v=>{ if(deckA && deckA.audio) deckA.audio.playbackRate = v; }});
+  Knob("krA","seA","Echo",0,1,0,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sEchoA) N.sEchoA.gain.value = v*v; }});
+  Knob("krA","srA","Rev",0,1,0,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sRevA) N.sRevA.gain.value = v*v; }});
+  Knob("krB","gainB","Gain",-60,6,0,{fmt:fmtDb,cb:v=>{ if(N.gB) N.gB.gain.value = gainFromDb(v); }});
+  Knob("krB","speedB","Speed",0.5,1.5,1,{def:1,fmt:v=>f2(v)+"x",cb:v=>{ if(deckB && deckB.audio) deckB.audio.playbackRate = v; }});
+  Knob("krB","seB","Echo",0,1,0,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sEchoB) N.sEchoB.gain.value = v*v; }});
+  Knob("krB","srB","Rev",0,1,0,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sRevB) N.sRevB.gain.value = v*v; }});
+
+  /* EQ de tranche par player (colonnes au-dessus du crossfader) : aigu / médium / grave */
+  const eqFmt = v => (v>0 ? "+" : "") + (Math.round(v*10)/10) + " dB";
+  ["A","B"].forEach(s=>{
+    Knob("krCh"+s, "eq"+s+"Hi",  "Hi",     -12, 12, 0, {def:0, fmt:eqFmt, cb:v=>{ if(N["chEq"+s]) N["chEq"+s][2].gain.value = v; }});
+    Knob("krCh"+s, "eq"+s+"Mid", "Mid", -12, 12, 0, {def:0, fmt:eqFmt, cb:v=>{ if(N["chEq"+s]) N["chEq"+s][1].gain.value = v; }});
+    Knob("krCh"+s, "eq"+s+"Low", "Low",  -12, 12, 0, {def:0, fmt:eqFmt, cb:v=>{ if(N["chEq"+s]) N["chEq"+s][0].gain.value = v; }});
+    chanSrcCtl(s);
+  });
+
+  /* siren : knobs répartis en 3 zones — krSiren (base, LFOs, dégradeur),
+     krSirenGt (gain + tone), krSirenFx (envois écho + réverbe) */
+  Knob("krSiren","sirBase","Base",60,2000,440,{log:1,fmt:v=>Math.round(v)+" Hz",cb:()=>lfoDepth()});
+  Knob("krSiren","lfoSf","Sin rate",0.05,25,2,{log:1,fmt:v=>f2(v)+" Hz",cb:v=>{ if(N.lfoS) N.lfoS.frequency.value = v; }});
+  Knob("krSiren","lfoSn","Sin depth",0,2400,0,{fmt:v=>(v|0)+" ct",cb:()=>lfoDepth()});
+  Knob("krSiren","lfoQf","Sqr rate",0.05,25,4,{log:1,fmt:v=>f2(v)+" Hz",cb:v=>{ if(N.lfoQ) N.lfoQ.frequency.value = v; }});
+  Knob("krSiren","lfoQn","Sqr depth",0,2400,0,{fmt:v=>(v|0)+" ct",cb:()=>lfoDepth()});
+  Knob("krSiren","sirBits","Bits",0,1,0,{fmt:v=>Math.round(16-v*12)+" bit",cb:()=>postDegrade()});
+  Knob("krSiren","sirSr","S.rate",0,1,0,{fmt:v=>Math.round(48000/(1+Math.round(v*95)))+" Hz",cb:()=>postDegrade()});
+  Knob("krSirenGt","sirGain","Gain",-60,6,-6,{fmt:fmtDb,cb:v=>{ if(N.sirGain) N.sirGain.gain.value = gainFromDb(v); }});
+  Knob("krSirenGt","sirTone","Tone",500,16000,12000,{log:1,fmt:v=>(v<1000?(v|0)+" Hz":f2(v/1000)+" kHz"),cb:v=>{ if(N.sirTone) N.sirTone.frequency.value = v; }});
+  Knob("krSirenFx","sirEcho","Echo send",0,1,0.25,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sirEcho) N.sirEcho.gain.value = v; }});
+  Knob("krSirenFx","sirRev","Rev send",0,1,0.1,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sirRev) N.sirRev.gain.value = v; }});
+
+  /* sampler : gain, HP, envois */
+  Knob("krSamp","sampGain","Gain",-60,6,-3,{fmt:fmtDb,cb:v=>{ if(N.sampGain) N.sampGain.gain.value = gainFromDb(v); }});
+  Knob("krSamp","sampHP","HPF",20,3500,85,{log:1,fmt:v=>(v|0)+" Hz",cb:v=>{ if(N.sampHP) N.sampHP.frequency.value = v; }});
+  Knob("krSamp","sampEcho","Echo",0,1,0.15,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sampEcho) N.sampEcho.gain.value = v; }});
+  Knob("krSamp","sampRev","Rev",0,1,0.1,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.sampRev) N.sampRev.gain.value = v; }});
+
+  /* ISO 4 bandes : chaque bande = kill au-dessus, VOL en premier (réglage de jeu,
+     juste sous le bouton), puis FREQ / RÉSO / EQ.
+     FREQ = centre de la bande (les 4 bandes l'ont, TOP compris — les bords se placent
+     au milieu géométrique entre deux centres voisins). RÉSO = résonance AJOUTÉE à la
+     base Butterworth 0.707 (0 = bords purs, somme des 4 bandes parfaitement plate).
+     VOL = niveau de la bande (-inf à +6). EQ = gain de la cloche
+     paramétrique centrée sur FREQ (0 = EQ inactif, ±15 dB). */
+  const kfr = v => (v<1000?(v|0)+" Hz":f2(v/1000)+" kHz");
+  const keq = v => (Math.abs(v) < 0.05 ? "off" : (v>0?"+":"") + f2(v) + " dB");
+  const kdef = [["S","SUB",60,30,120,"krKillS",1],["B","BASS",200,100,500,"krKillB",1],["M","MID",1200,500,4000,"krKillM",1],["T","TOP",6500,2000,16000,"krKillT",1]];
+  kdef.forEach(b=>{
+    Knob(b[5],"k"+b[0]+"v","VOL",-90,6,0,Object.assign({fmt:fmtDb,cb:()=>applyKills()},sm));
+    if(b[6]) Knob(b[5],"k"+b[0]+"f","FREQ",b[3],b[4],b[2],Object.assign({log:1,fmt:kfr,cb:()=>applyKills()},sm));
+    Knob(b[5],"k"+b[0]+"q","RES",0,10,0,Object.assign({fmt:v=>"Q "+f2(resoLin(v)),cb:()=>applyKills()},sm));
+    Knob(b[5],"k"+b[0]+"e","EQ",-15,15,0,Object.assign({fmt:keq,cb:()=>applyKills()},sm));
+  });
+
+  /* vumètres verticaux par bande : fenêtre = la vraie bande après découpe ISO
+     (bords pilotés par les knobs FREQ) — recoupements fixes KR en secours,
+     mesure faite sur le bus players (après dub filtre et ISO) — siren/sampler/micro ne les activent pas.
+     OFFS = calibration par bande : du bruit rose à niveau nominal remplit ~90% */
+  const KR = {"S":[20,155],"B":[155,875],"M":[875,4250],"T":[4250,16000]};
+  const OFFS = {"S":28.4,"B":32.1,"M":29.9,"T":23.4};   /* recalibré pour les fenêtres « milieux entre centres » */
+  window.BANDM = ["S","B","M","T"].map(id=>({
+    id, r: KR[id], off: OFFS[id], lv:0, pk:0, db:-120,
+    cover: document.querySelector("#vm"+id+" .vcover"),
+    peak: document.querySelector("#vm"+id+" .vpeak")
+  }));
+
+  /* dub filtre */
+  Knob("krDub","dubF","Cutoff",30,18000,18000,{log:1,def:18000,fmt:v=>(v<1000?(v|0)+" Hz":f2(v/1000)+" kHz"),cb:v=>{ if(N.dubF) N.dubF.frequency.value = v; }});
+  Knob("krDub","dubQ","Res",0.3,16,1.2,{log:1,fmt:v=>"Q "+f2(v),cb:v=>{ if(N.dubF) N.dubF.Q.value = v; }});
+  Knob("krDub","dubLr","LFO rate",0.05,20,0.5,{log:1,fmt:v=>f2(v)+" Hz",cb:v=>{ if(N.dubLFO) N.dubLFO.frequency.value = v; }});
+  Knob("krDub","dubLd","LFO depth",0,3000,600,{fmt:v=>(v|0)+" Hz",cb:v=>{ if(N.dubLFOg) N.dubLFOg.gain.value = (N.dubLFOon ? v : 0); }});
+
+  /* écho à bandes */
+  Fader("fadEcho", 0.679, {h:1, ll:"TIME", id:"echoTime", def:0.679,
+    ffmt:v=>{ const t = 0.02*Math.pow(75, v); return f2(t)+" s"; },
+    cb:v=>setEchoTime(0.02*Math.pow(75, v))});
+  Knob("krEcho1","echoFb","Feedback",0,0.95,0.55,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.ppFB){ N.ppFB.gain.value = v; N.nnFB.gain.value = v; } }});
+  Knob("krEcho1","echoCut","Cutoff",200,8000,1363,{log:1,fmt:v=>(v<1000?(v|0)+" Hz":f2(v/1000)+" kHz"),cb:v=>{ if(N.eF) N.eF.frequency.value = v; }});
+  Knob("krEcho1","echoQ","Reso",0.5,8,2,{log:1,fmt:v=>"Q "+f2(v),cb:v=>{ if(N.eF) N.eF.Q.value = v; }});
+  Knob("krEcho1","echoDw","DW",0,1.5,0.8,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.echoDw) N.echoDw.gain.value = v; }});
+  Knob("krEcho2","echoSat","Sat",1,6,2,{fmt:v=>f2(v)+"x",cb:v=>{ if(N.eSat) N.eSat.curve = makeSatCurve(v); }});
+  Knob("krEcho2","echoWow","Wow",0,1,0.35,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.wowG){ N.wowG.gain.value = v*0.0012; N.flutG.gain.value = v*0.00025; } }});
+
+  /* reverbe */
+  Knob("krRev","revRoom","Room",0.3,8,2.2,{log:1,fmt:v=>f2(v)+" s",cb:()=>regenIR()});
+  Knob("krRev","revHfd","Damp",200,16000,8000,{log:1,fmt:v=>(v<1000?(v|0)+" Hz":f2(v/1000)+" kHz"),cb:()=>regenIR()});
+  Knob("krRev","revCut","Cutoff",200,16000,2230,{log:1,fmt:v=>(v<1000?(v|0)+" Hz":f2(v/1000)+" kHz"),cb:v=>{ if(N.revF) N.revF.frequency.value = v; }});
+  Knob("krRev","revQ","Reso",0.5,8,2,{log:1,fmt:v=>"Q "+f2(v),cb:v=>{ if(N.revF) N.revF.Q.value = v; }});
+  Knob("krRev","revDw","DW",0,1.5,0.8,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.revDw) N.revDw.gain.value = v; }});
+
+  /* micro : gain, HP, EQ grave / médium / aigu (mêmes bandes que les tranches),
+     cloche paramétrique P.FREQ / P.RÉSO / P.GAIN, envois écho + réverbe */
+  Knob("krMic","micGain","Gain",-60,6,-10,{fmt:fmtDb,cb:v=>{ if(N.micGain && micOn) N.micGain.gain.value = gainFromDb(v); }});
+  Knob("krMic","micHP","HPF",20,3500,85,{log:1,fmt:v=>(v|0)+" Hz",cb:v=>{ if(N.micHP) N.micHP.frequency.value = v; }});
+  Knob("krMic","micLow","Low",-12,12,0,{def:0,fmt:eqFmt,cb:v=>{ if(N.micEq) N.micEq[0].gain.value = v; }});
+  Knob("krMic","micMid","Mid",-12,12,0,{def:0,fmt:eqFmt,cb:v=>{ if(N.micEq) N.micEq[1].gain.value = v; }});
+  Knob("krMic","micHigh","Hi",-12,12,0,{def:0,fmt:eqFmt,cb:v=>{ if(N.micEq) N.micEq[2].gain.value = v; }});
+  Knob("krMicPk","micPf","FREQ",100,8000,800,{log:1,def:800,fmt:kfr,cb:v=>{ if(N.micPk) N.micPk.frequency.value = v; }});
+  Knob("krMicPk","micPq","RES",0.5,10,2,{log:1,def:2,fmt:v=>"Q "+f2(v),cb:v=>{ if(N.micPk) N.micPk.Q.value = v; }});
+  Knob("krMicPk","micPg","GAIN",-15,15,0,{def:0,fmt:keq,cb:v=>{ if(N.micPk) N.micPk.gain.value = v; }});
+  Knob("krMicFx","micEcho","Echo",0,1,0.3,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.micEcho) N.micEcho.gain.value = v; }});
+  Knob("krMicFx","micRev","Rev",0,1,0.2,{fmt:v=>(v*100|0)+"%",cb:v=>{ if(N.micRev) N.micRev.gain.value = v; }});
+
+  /* master + crossfader */
+  Knob("krMaster","master","Master",-60,6,0,{fmt:fmtDb,cb:v=>{ if(N.master) N.master.gain.value = gainFromDb(v); }});
+  /* retours écho/réverb : arrivent directement au master — knobs plus petits que le volume master */
+  Knob("krMaster","echoDw","Echo rtn",0,1.5,0.8,{sm:1,fmt:v=>Math.round(v*100)+"%",cb:v=>{ if(N.echoDw) N.echoDw.gain.value = v; }});
+  Knob("krMaster","revDw","Rev rtn",0,1.5,0.8,{sm:1,fmt:v=>Math.round(v*100)+"%",cb:v=>{ if(N.revDw) N.revDw.gain.value = v; }});
+  Fader("fadX", 0.5, {h:1, ll:"A", lr:"B", id:"xf", def:0.5,
+    ffmt:v=>"A "+((1-v)*100|0)+"% / B "+(v*100|0)+"%",
+    cb:v=>{ if(N.xfA){ N.xfA.gain.value = Math.cos(v*Math.PI/2);
+      N.xfB.gain.value = Math.sin(v*Math.PI/2); } }});
+
+  /* EQ10 : 10 knobs ±12 dB sur une seule ligne (le panneau est en haut de l'interface) */
+  const F10 = [32,63,125,250,500,1000,2000,4000,8000,16000];
+  F10.forEach((fr,i)=>{
+    Knob("eq10row","eq10_"+i, fr>=1000 ? (fr/1000)+"k" : ""+fr, -12, 12, 0,
+      {sm:1, fmt:v=>(v>0?"+":"")+(Math.round(v*10)/10),
+       cb:v=>{ if(N.e10) N.e10[i].gain.value = v; }});
+  });
+  $("eq10Reset").addEventListener("click", ()=>{ F10.forEach((fr,i)=>CTRL["eq10_"+i].set(0)); toast("EQ10 reset"); });
+
+  /* toggles */
+  Tgl("kS", 0, v=>{ killState[0]=v?1:0; applyKills(); syncKillMinis(); });
+  Tgl("kB", 0, v=>{ killState[1]=v?1:0; applyKills(); syncKillMinis(); });
+  Tgl("kM", 0, v=>{ killState[2]=v?1:0; applyKills(); syncKillMinis(); });
+  Tgl("kT", 0, v=>{ killState[3]=v?1:0; applyKills(); syncKillMinis(); });
+  /* mini kills de la barre repliée : un clic sur un mini = un clic sur le vrai
+     bouton (même état, même sauvegarde) ; la synchro des classes .on se fait
+     dans les callbacks ci-dessus, donc elle couvre aussi le clavier 1-4, les
+     presets et le MIDI (tout passe par api.set) */
+  function syncKillMinis(){
+    [["kS","kSm"],["kB","kBm"],["kM","kMm"],["kT","kTm"]].forEach(pr=>{
+      const mb = $(pr[1]); if(mb) mb.classList.toggle("on", !!CTRL[pr[0]].get());
+    });
+  }
+  [["kS","kSm"],["kB","kBm"],["kM","kMm"],["kT","kTm"]].forEach(pr=>{
+    $(pr[1]).addEventListener("click", ()=>$(pr[0]).click());
+  });
+  Tgl("isoByp", 0, v=>setIsoBypass(v));
+  Tgl("dubLP", 1, v=>{ if(v) setDubType("lowpass"); });
+  Tgl("dubHP", 0, v=>{ if(v) setDubType("highpass"); });
+  Tgl("dubLFO", 0, v=>{ N.dubLFOon = v; if(N.dubLFOg) N.dubLFOg.gain.value = v ? CTRL.dubLd.get() : 0; });
+  Tgl("ppBtn", 0, v=>{ if(N.ppIn){ N.ppIn.gain.value = v?1:0; N.nnIn.gain.value = v?0:1; } });
+  Tgl("slideBtn", 1, v=>{ N.slideOn = v; });
+  Tgl("dblEcho", 0, v=>{ if(N.eDblIn){ N.eDblIn.gain.value = v?1:0; N.eDblBy.gain.value = v?0:1; } });
+  Tgl("limEcho", 0, v=>{ if(N.eLimOut){ N.eLimOut.gain.value = v?1:0; N.eLimByp.gain.value = v?0:1; } });
+  Tgl("actEcho", 1, v=>{ if(N.echoAct) N.echoAct.gain.value = v?1:0; });
+  Tgl("dblRev", 0, v=>{ if(N.rDblIn){ N.rDblIn.gain.value = v?1:0; N.rDblBy.gain.value = v?0:1; } });
+  Tgl("limRev", 0, v=>{ if(N.revLimOut){ N.revLimOut.gain.value = v?1:0; N.revLimByp.gain.value = v?0:1; } });
+  Tgl("actRev", 1, v=>{ if(N.revAct) N.revAct.gain.value = v?1:0; });
+  Tgl("chopBtn", 0, v=>{ if(N.chopD){ N.chopD.gain.value = v?0.5:0; chopOn = v; } });
+  Tgl("limiter", 1, v=>{ if(N.limiterByp){ N.limiterByp.gain.value = v?0:1; N.limiterOut.gain.value = v?1:0; } });
+  Tgl("loopA", 0, v=>{ if(deckA && deckA.audio) deckA.audio.loop = v; });
+  Tgl("loopB", 0, v=>{ if(deckB && deckB.audio) deckB.audio.loop = v; });
+}
+
+function setDubType(type){
+  if(N.dubF){
+    N.dubF.type = type;
+    N.dubF.frequency.value = CTRL.dubF.get();
+  }
+  $("dubLP").classList.toggle("on", type==="lowpass");
+  $("dubHP").classList.toggle("on", type==="highpass");
+}
+
+function syncAllParams(){
+  if(!N.mix) return;
+  applyKills();
+  isoByp = !!CTRL.isoByp.get();
+  N.isoWet.gain.value = isoByp ? 0 : 1; N.isoDry.gain.value = isoByp ? 1 : 0;
+  N.gA.gain.value = gainFromDb(CTRL.gainA.get());
+  N.gB.gain.value = gainFromDb(CTRL.gainB.get());
+  N.sEchoA.gain.value = CTRL.seA.get()**2; N.sRevA.gain.value = CTRL.srA.get()**2;
+  N.sEchoB.gain.value = CTRL.seB.get()**2; N.sRevB.gain.value = CTRL.srB.get()**2;
+  N.sirGain.gain.value = gainFromDb(CTRL.sirGain.get());
+  N.sirTone.frequency.value = CTRL.sirTone.get();
+  N.sirEcho.gain.value = CTRL.sirEcho.get(); N.sirRev.gain.value = CTRL.sirRev.get();
+  N.lfoS.frequency.value = CTRL.lfoSf.get(); N.lfoQ.frequency.value = CTRL.lfoQf.get();
+  lfoDepth(); postDegrade();
+  N.sampGain.gain.value = gainFromDb(CTRL.sampGain.get());
+  N.sampHP.frequency.value = CTRL.sampHP.get();
+  N.sampEcho.gain.value = CTRL.sampEcho.get(); N.sampRev.gain.value = CTRL.sampRev.get();
+  /* micro : HP, EQ 3 bandes, paramétrique, envois — micGain reste à 0 tant que MIC est off */
+  N.micHP.frequency.value = CTRL.micHP.get();
+  N.micEq[0].gain.value = CTRL.micLow.get(); N.micEq[1].gain.value = CTRL.micMid.get(); N.micEq[2].gain.value = CTRL.micHigh.get();
+  N.micPk.frequency.value = CTRL.micPf.get(); N.micPk.Q.value = CTRL.micPq.get(); N.micPk.gain.value = CTRL.micPg.get();
+  N.micEcho.gain.value = CTRL.micEcho.get(); N.micRev.gain.value = CTRL.micRev.get();
+  N.e10.forEach((f,i)=>{ f.gain.value = CTRL["eq10_"+i].get(); });
+  N.dubF.frequency.value = CTRL.dubF.get(); N.dubF.Q.value = CTRL.dubQ.get();
+  N.dubLFO.frequency.value = CTRL.dubLr.get(); N.dubLFOg.gain.value = N.dubLFOon ? CTRL.dubLd.get() : 0;
+  N.ppFB.gain.value = N.nnFB.gain.value = CTRL.echoFb.get();
+  N.eF.frequency.value = CTRL.echoCut.get(); N.eF.Q.value = CTRL.echoQ.get();
+  N.eSat.curve = makeSatCurve(CTRL.echoSat.get());
+  N.wowG.gain.value = CTRL.echoWow.get()*0.0012; N.flutG.gain.value = CTRL.echoWow.get()*0.00025;
+  N.echoDw.gain.value = CTRL.echoDw.get();
+  const pp = CTRL.ppBtn.get(); N.ppIn.gain.value = pp?1:0; N.nnIn.gain.value = pp?0:1;
+  N.slideOn = !!CTRL.slideBtn.get();
+  N.eDblIn.gain.value = CTRL.dblEcho.get()?1:0; N.eDblBy.gain.value = CTRL.dblEcho.get()?0:1;
+  N.eLimOut.gain.value = CTRL.limEcho.get()?1:0; N.eLimByp.gain.value = CTRL.limEcho.get()?0:1;
+  N.echoAct.gain.value = CTRL.actEcho.get()?1:0;
+  N.conv.buffer = makeIR(CTRL.revRoom.get(), CTRL.revHfd.get());
+  N.revF.frequency.value = CTRL.revCut.get(); N.revF.Q.value = CTRL.revQ.get();
+  N.rDblIn.gain.value = CTRL.dblRev.get()?1:0; N.rDblBy.gain.value = CTRL.dblRev.get()?0:1;
+  N.revLimOut.gain.value = CTRL.limRev.get()?1:0; N.revLimByp.gain.value = CTRL.limRev.get()?0:1;
+  N.revAct.gain.value = CTRL.actRev.get()?1:0;
+  N.revDw.gain.value = CTRL.revDw.get();
+  N.chopD.gain.value = CTRL.chopBtn.get()?0.5:0; chopOn = !!CTRL.chopBtn.get();
+  N.master.gain.value = gainFromDb(CTRL.master.get());
+  N.xfA.gain.value = Math.cos(CTRL.xf.get()*Math.PI/2);
+  N.xfB.gain.value = Math.sin(CTRL.xf.get()*Math.PI/2);
+  /* tranches : source sélectionnée (deck/ligne) + EQ 3 bandes */
+  ["A","B"].forEach(s=>{
+    applyChanSrc(s);
+    const eq = N["chEq"+s];
+    eq[0].gain.value = CTRL["eq"+s+"Low"].get();
+    eq[1].gain.value = CTRL["eq"+s+"Mid"].get();
+    eq[2].gain.value = CTRL["eq"+s+"Hi"].get();
+  });
+  N.limiterOut.gain.value = CTRL.limiter.get() ? 1 : 0;
+  N.limiterByp.gain.value = CTRL.limiter.get() ? 0 : 1;
+  if(deckA && deckA.audio) deckA.audio.playbackRate = CTRL.speedA.get();
+  if(deckB && deckB.audio) deckB.audio.playbackRate = CTRL.speedB.get();
+}
+
+/* ================= PLAYERS ================= */
+function makeDeck(side){
+  const d = {
+    side, audio: null, files: [], sel: -1, pullup: null, revBuf: null, revDecoding: false, revReq: 0,
+    pl: $("pl"+side), title: $("title"+side),
+    bar: $("bar"+side), fill: $("bar"+side+"f"), time: $("time"+side),
+    playBtn: $("play"+side), stopBtn: $("stop"+side), rewBtn: $("rew"+side),
+    addBtn: $("add"+side), prevBtn: $("prev"+side), nextBtn: $("next"+side),
+    input: $("fileDeck"+side)
+  };
+  d.addBtn.addEventListener("click", ()=>d.input.click());
+  d.input.addEventListener("change", ()=>{ addFiles(d, d.input.files); d.input.value = ""; });
+  d.playBtn.addEventListener("click", ()=>togglePlay(d));
+  d.stopBtn.addEventListener("click", ()=>stopDeck(d));
+  d.rewBtn.addEventListener("click", ()=>rewPullup(d));
+  d.prevBtn.addEventListener("click", ()=>selectTrack(d, d.sel-1, true));
+  d.nextBtn.addEventListener("click", ()=>selectTrack(d, d.sel+1, true));
+  d.bar.addEventListener("click", e=>{
+    if(!d.audio || !isFinite(d.audio.duration)) return;
+    const r = d.bar.getBoundingClientRect();
+    d.audio.currentTime = clamp((e.clientX - r.left)/r.width,0,1) * d.audio.duration;
+  });
+  const panel = $("deck"+side);
+  panel.addEventListener("dragover", e=>{ e.preventDefault(); panel.classList.add("dragover"); });
+  panel.addEventListener("dragleave", ()=>panel.classList.remove("dragover"));
+  panel.addEventListener("drop", e=>{ e.preventDefault(); panel.classList.remove("dragover"); addFiles(d, e.dataTransfer.files); });
+  renderPlaylist(d);   /* affiche la playlist (état vide) dès le démarrage, sous les knobs */
+  d.audio = new Audio(); d.audio.preload = "auto";
+  const src = AC.createMediaElementSource(d.audio);
+  N["g"+side] = AC.createGain(); N["xf"+side] = AC.createGain();
+  N["sEcho"+side] = AC.createGain(); N["sRev"+side] = AC.createGain();
+  /* tranche de canal : sélecteur de source (deck / entrée ligne) + EQ grave-médium-aigu,
+     puis crossfader — l'entrée ligne suit exactement le chemin du player
+     (EQ de tranche, crossfader, dub filtre, ISO) */
+  const mkbq = (type, f, q)=>{ const n = AC.createBiquadFilter(); n.type = type; n.frequency.value = f; if(q) n.Q.value = q; return n; };
+  N["chEq"+side] = [mkbq("lowshelf",150), mkbq("peaking",1000,0.9), mkbq("highshelf",4000)];
+  N["sel"+side+"D"] = AC.createGain(); N["sel"+side+"L"] = AC.createGain();
+  N["sel"+side+"L"].gain.value = 0;
+  N["line"+side] = AC.createGain();
+  src.connect(N["g"+side]);
+  N["g"+side].connect(N["sel"+side+"D"]); N["sel"+side+"D"].connect(N["chEq"+side][0]);
+  N["line"+side].connect(N["sel"+side+"L"]); N["sel"+side+"L"].connect(N["chEq"+side][0]);
+  N["chEq"+side][0].connect(N["chEq"+side][1]);
+  N["chEq"+side][1].connect(N["chEq"+side][2]);
+  N["chEq"+side][2].connect(N["xf"+side]); N["xf"+side].connect(N.mix);
+  /* sends POST-crossfader : écho et rev suivent la loi du fader (cos/sin) comme le
+     chemin sec — deck de l'autre côté du fader = sends muets ("3 crossfaders") */
+  N["xf"+side].connect(N["sEcho"+side]); N["sEcho"+side].connect(N.echoBus);
+  N["xf"+side].connect(N["sRev"+side]); N["sRev"+side].connect(N.revBus);
+  d.audio.loop = !!CTRL["loop"+side].get();
+  d.audio.playbackRate = CTRL["speed"+side].get();
+  return d;
+}
+function addFiles(d, fileList){
+  const arr = Array.from(fileList || []).filter(f=>f.type.startsWith("audio") || /\.(mp3|wav|ogg|flac|m4a|aac|aiff?)$/i.test(f.name));
+  if(!arr.length){ toast("No audio file found"); return; }
+  arr.forEach(f=>d.files.push(f));
+  renderPlaylist(d);
+  if(d.sel < 0) selectTrack(d, 0, false);
+  toast(arr.length + " file(s) added to player " + d.side);
+}
+function renderPlaylist(d){
+  d.pl.innerHTML = "";
+  if(!d.files.length){
+    d.pl.innerHTML = '<div class="empty">Empty playlist — "+ ADD" or drop files here</div>'; return;
+  }
+  d.files.forEach((f,i)=>{
+    const it = document.createElement("div");
+    it.className = "item" + (i===d.sel ? " sel" : "") + (i===d.sel && d.audio && !d.audio.paused ? " play" : "");
+    it.textContent = (i+1) + ". " + f.name.replace(/\.[^.]+$/,"");
+    it.addEventListener("click", ()=>selectTrack(d, i, true));
+    d.pl.appendChild(it);
+  });
+  d.pl.scrollTop = d.sel >= 0 ? d.sel*24 : 0;
+}
+function selectTrack(d, i, autoplay){
+  if(i < 0) i = 0;
+  if(i >= d.files.length) i = d.files.length-1;
+  if(i < 0 || !d.files.length) return;
+  d.sel = i;
+  stopPullup(d);
+  decodeForRewind(d, i);   /* décode le morceau en tâche de fond pour le rembobinage pull-up */
+  if(d._url) URL.revokeObjectURL(d._url);
+  d._url = URL.createObjectURL(d.files[i]);
+  d.audio.src = d._url;
+  d.title.textContent = d.files[i].name.replace(/\.[^.]+$/,"");
+  renderPlaylist(d);
+  if(autoplay) d.audio.play().catch(()=>{});
+}
+function togglePlay(d){
+  if(!d.audio.src){
+    if(d.files.length) selectTrack(d, Math.max(0,d.sel), false);
+    else { toast("Player " + d.side + ": add a file first"); return; }
+  }
+  if(d.audio.paused){ stopPullup(d); d.audio.play().catch(()=>{}); } else { d.audio.pause(); }
+  renderPlaylist(d);
+}
+function stopDeck(d){
+  if(!d.audio.src) return;
+  stopPullup(d);
+  d.audio.pause(); d.audio.currentTime = 0; renderPlaylist(d);
+}
+
+/* ---------- rewind "pull up" : la bande rembobine à l'envers puis le titre repart ---------- */
+/* le morceau est décodé une fois par piste (en tâche de fond) pour pouvoir rejouer
+   les dernières secondes à l'envers ; l'effet entre par le gain du deck, donc il suit
+   l'EQ de tranche, le crossfader et les envois écho/réverbe comme la lecture normale */
+function decodeForRewind(d, i){
+  d.revReq = (d.revReq || 0) + 1;
+  const req = d.revReq;
+  d.revBuf = null; d.revDecoding = true;
+  d.files[i].arrayBuffer()
+    .then(ab=>AC.decodeAudioData(ab))
+    .then(buf=>{ if(d.revReq === req) d.revBuf = buf; })
+    .catch(()=>{})
+    .then(()=>{ if(d.revReq === req) d.revDecoding = false; });
+}
+function stopPullup(d){
+  if(!d.pullup) return;
+  clearTimeout(d.pullup.timer);
+  try{ d.pullup.src.stop(); }catch(err){}
+  try{ d.pullup.src.disconnect(); }catch(err){}
+  try{ d.pullup.lp.disconnect(); }catch(err){}
+  try{ d.pullup.g.disconnect(); }catch(err){}
+  d.pullup = null;
+}
+function rewPullup(d){
+  if(!d.audio || !d.audio.src || !AC) return;
+  const a = d.audio;
+  const hadPending = !!(d.pullup && d.pullup.wantPlay);
+  const wasPlaying = hadPending || a.ended || (!a.paused && !a.ended);
+  const pos = isFinite(a.currentTime) ? a.currentTime : 0;
+  stopPullup(d);
+  a.pause();
+  /* rien à rembobiner (déjà au début) : le titre repart simplement */
+  if(pos < 0.25){
+    a.currentTime = 0;
+    if(wasPlaying) a.play().catch(()=>{});
+    renderPlaylist(d);
+    return;
+  }
+  /* buffer décodé pas encore prêt (tout juste chargé) : retour direct, le prochain
+     appui aura le pull-up — le décodage continue en tâche de fond */
+  if(!d.revBuf){
+    if(!d.revDecoding) decodeForRewind(d, d.sel);
+    a.currentTime = 0;
+    if(wasPlaying) a.play().catch(()=>{});
+    renderPlaylist(d);
+    return;
+  }
+  a.currentTime = 0;
+  /* segment inversé : jusqu'à 9 s de contenu joué, à l'envers */
+  const TAIL = 9.0, sr = AC.sampleRate, b = d.revBuf;
+  const i1 = Math.min(b.length, Math.ceil(pos * sr));
+  const revLen = Math.min(i1, Math.floor(sr * TAIL));
+  const rev = AC.createBuffer(b.numberOfChannels, revLen, sr);
+  for(let ch=0; ch<b.numberOfChannels; ch++){
+    const s = b.getChannelData(ch), o = rev.getChannelData(ch), off = i1 - revLen;
+    for(let i=0; i<revLen; i++) o[i] = s[off + revLen - 1 - i];
+  }
+  /* micro-fondus anti-clic (tête 3 ms, queue 15 ms) — avec la boucle, ils adoucissent
+     aussi chaque tour quand le segment court "patine" */
+  for(let ch=0; ch<rev.numberOfChannels; ch++){
+    const o = rev.getChannelData(ch);
+    const fi = Math.min(Math.floor(sr*0.003), revLen), fo = Math.min(Math.floor(sr*0.015), revLen);
+    for(let i=0; i<fi; i++) o[i] *= i/fi;
+    for(let i=0; i<fo; i++) o[revLen-1-i] *= i/fo;
+  }
+  /* la bande accélère (montée de pitch façon rembobinage), s'assombrit et s'éteint.
+     Rembobinage long : ~2,7 s. Si le morceau a peu avancé, le segment inversé
+     boucle (src.loop) pour remplir toute la durée, comme une bande qui patine */
+  const DUR = 2.7;
+  const t0 = AC.currentTime + 0.02;
+  const g = AC.createGain(), lp = AC.createBiquadFilter(), src = AC.createBufferSource();
+  lp.type = "lowpass"; lp.Q.value = 0.7;
+  src.buffer = rev; src.loop = true;
+  const lvl = CTRL["gain"+d.side] ? gainFromDb(CTRL["gain"+d.side].get()) : 1;
+  g.gain.setValueAtTime(lvl, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0001, lvl*0.15), t0 + DUR);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + DUR + 0.04);
+  src.playbackRate.setValueAtTime(1, t0);
+  src.playbackRate.exponentialRampToValueAtTime(6.0, t0 + DUR);
+  lp.frequency.setValueAtTime(9000, t0);
+  lp.frequency.exponentialRampToValueAtTime(700, t0 + DUR);
+  src.connect(lp); lp.connect(g); g.connect(N["g"+d.side]);
+  src.start(t0); src.stop(t0 + DUR + 0.06);
+  d.pullup = { src, lp, g, wantPlay: wasPlaying, timer: null };
+  /* la lecture repart du début quand la bande a fini de remonter */
+  d.pullup.timer = setTimeout(()=>{
+    d.pullup = null;
+    try{ src.disconnect(); }catch(err){}
+    try{ lp.disconnect(); }catch(err){}
+    try{ g.disconnect(); }catch(err){}
+    if(wasPlaying && a.paused) a.play().catch(()=>{});
+    renderPlaylist(d);
+  }, DUR*1000 + 80);
+}
+
+/* ================= DUB SIREN ================= */
+/* 12 presets de siren :
+   [nom, base Hz, LFO sin f, LFO sin ct, LFO sqr f, LFO sqr ct, bits, sr norm, chop] */
+const SIREN_PRESETS = [
+  ["WAIL",   497, 0.18, 1020, 0.05, 0,    10, 1.00, 0],
+  ["CHOP",   825, 1.12, 0,    1.51, 662,  4,  1.00, 1],
+  ["DOUCE",  740, 1.31, 416,  0.05, 0,    4,  0.52, 0],
+  ["YELP",   427, 6.4,  227,  0.05, 0,    5,  0.80, 0],
+  ["MOAN",   660, 0.48, 907,  2.2,  340,  4,  0.96, 0],
+  ["STEP",   570, 0.37, 737,  1.1,  1228, 4,  1.00, 0],
+  ["ALARME", 1455, 2.3,  0,    2.2,  661,  4,  0.89, 0],
+  ["GRAVE",  196, 0.56, 2041, 0.05, 0,    16, 0.98, 0],
+  ["CRUSH",  511, 3.7,  869,  0.05, 0,    16, 1.00, 0],
+  ["TON",    278, 0.10, 340,  0.30, 170,  4,  1.00, 0],
+  ["RING",   552, 25,   1303, 0.05, 0,    8,  0.67, 0],
+  ["GROSSE", 293, 0.35, 1851, 0.105,624,  4,  1.00, 0]
+  /* noms affichés : la liste ci-dessus est l'ancienne version FR ; les libellés anglais
+     sont appliqués dans buildSirenUI via SIREN_PRESETS_EN */
+];
+/* libellés anglais des presets (terminologie dub siren hardware) */
+const SIREN_PRESETS_EN = ["WAIL","CHOP","SOFT","YELP","MOAN","STEP","ALARM","DEEP","CRUSH","TONE","RING","FAT"];
+const SIREN_WAVES = ["sine","square","sawtooth","triangle","pulse"];
+let sirenWave = "square", sirenOsc = null, sirenHeld = false, chopOn = false;
+
+function buildSirenUI(){
+  /* presets et ondes en menus déroulants (place minimale) */
+  const selP = $("sirPresetSel");
+  SIREN_PRESETS.forEach((p,i)=>{
+    const o = document.createElement("option");
+    o.value = i; o.textContent = SIREN_PRESETS_EN[i];
+    selP.appendChild(o);
+  });
+  selP.addEventListener("change", ()=>{
+    const p = SIREN_PRESETS[+selP.value];
+    CTRL.sirBase.set(p[1]);
+    CTRL.lfoSf.set(p[2]); CTRL.lfoSn.set(p[3]);
+    CTRL.lfoQf.set(p[4]); CTRL.lfoQn.set(p[5]);
+    CTRL.sirBits.set(clamp((16-p[6])/12, 0, 1));
+    CTRL.sirSr.set(p[7]);
+    CTRL.chopBtn.set(p[8]);
+    toast("Siren preset: " + SIREN_PRESETS_EN[+selP.value]);
+  });
+  const selW = $("sirWaveSel");
+  SIREN_WAVES.forEach(w=>{
+    const o = document.createElement("option");
+    o.value = w; o.textContent = w === "sawtooth" ? "SAW" : w.toUpperCase();
+    if(w === sirenWave) o.selected = true;
+    selW.appendChild(o);
+  });
+  selW.addEventListener("change", ()=>{
+    sirenWave = selW.value;
+    if(sirenOsc) sirenRelease();
+  });
+  /* gros bouton FIRE déplié + mini FIRE de la barre repliée : mêmes handlers press/hold */
+  const fire = [$("sirenBtn"), $("sirenMini")];
+  const on = e=>{ e.preventDefault(); sirenOn(); };
+  const off = e=>{ e.preventDefault(); sirenOff(); };
+  fire.forEach(b=>{
+    b.addEventListener("mousedown",on); b.addEventListener("mouseup",off);
+    b.addEventListener("mouseleave",off); b.addEventListener("touchstart",on,{passive:false});
+    b.addEventListener("touchend",off);
+  });
+}
+function sirenOn(){
+  if(!AC || sirenHeld) return;
+  sirenHeld = true;
+  document.querySelectorAll("#sirenBtn,#sirenMini").forEach(b=>b.classList.add("active"));
+  const now = AC.currentTime;
+  const o = AC.createOscillator();
+  if(sirenWave === "pulse" && N.pulseWave) o.setPeriodicWave(N.pulseWave);
+  else o.type = sirenWave;
+  o.frequency.value = CTRL.sirBase.get();
+  N.lfoSg.connect(o.frequency); N.lfoQg.connect(o.frequency);
+  o.connect(N.sirDrive);
+  o.start(now);
+  sirEnvBase(0.012);
+  sirenOsc = { osc: o };
+}
+function sirEnvBase(attack){
+  if(!AC) return;
+  const now = AC.currentTime;
+  const base = chopOn ? 0.5 : 1;
+  N.sirEnv.gain.cancelScheduledValues(now);
+  N.sirEnv.gain.setValueAtTime(Math.max(0.0001, N.sirEnv.gain.value), now);
+  N.sirEnv.gain.linearRampToValueAtTime(base, now + attack);
+}
+function sirenRelease(){
+  if(!AC || !sirenOsc) return;
+  const now = AC.currentTime;
+  N.sirEnv.gain.cancelScheduledValues(now);
+  N.sirEnv.gain.setValueAtTime(Math.max(0.0001, N.sirEnv.gain.value), now);
+  N.sirEnv.gain.linearRampToValueAtTime(0.0001, now+0.12);
+  try{ sirenOsc.osc.stop(now+0.15); }catch(e){}
+  sirenOsc = null;
+}
+function sirenOff(){
+  sirenHeld = false;
+  document.querySelectorAll("#sirenBtn,#sirenMini").forEach(b=>b.classList.remove("active"));
+  sirenRelease();
+}
+
+/* ================= SAMPLER ================= */
+const PADKEYS = ["z","x","c","v","b","n","m",",",".",";","/","'"];
+let padSets = [null,null,null,null].map(()=>[null,null,null,null,null,null,null,null,null,null,null,null]);
+let curSet = 0, padTarget = -1;
+function buildSamplerUI(){
+  const sets = $("setBtns");
+  ["1","2","3","4"].forEach((s,i)=>{
+    const b = document.createElement("button");
+    b.className = "tgl" + (i===0 ? " on" : "");
+    b.textContent = s;
+    b.addEventListener("click", ()=>{ curSet = i;
+      sets.querySelectorAll(".tgl").forEach(x=>x.classList.remove("on")); b.classList.add("on"); renderPads(); });
+    sets.appendChild(b);
+  });
+  const pads = $("pads");
+  for(let i=0; i<12; i++){
+    const p = document.createElement("div");
+    p.className = "pad";
+    p.innerHTML = '<span class="pnum">'+(i+1)+'</span><span class="pkey">'+PADKEYS[i].toUpperCase()+'</span><span class="pname">EMPTY</span>';
+    pads.appendChild(p);
+    p.addEventListener("click", ()=>{
+      if(padSets[curSet][i]) playPad(i);
+      else { padTarget = i; $("filePad").click(); }
+    });
+    p.addEventListener("dragover", e=>{ e.preventDefault(); p.classList.add("dragover"); });
+    p.addEventListener("dragleave", ()=>p.classList.remove("dragover"));
+    p.addEventListener("drop", e=>{
+      e.preventDefault(); p.classList.remove("dragover");
+      const f = e.dataTransfer.files[0]; if(f) loadPad(i, f);
+    });
+  }
+  $("filePad").addEventListener("change", e=>{
+    if(padTarget >= 0 && e.target.files[0]) loadPad(padTarget, e.target.files[0]);
+    e.target.value = "";
+  });
+  renderPads();
+}
+function loadPad(i, file){
+  file.arrayBuffer().then(ab=>AC.decodeAudioData(ab)).then(buf=>{
+    padSets[curSet][i] = { name: file.name.replace(/\.[^.]+$/,""), buffer: buf };
+    renderPads(); toast("Pad " + (i+1) + " loaded: " + padSets[curSet][i].name);
+  }).catch(()=>toast("Could not decode this audio file"));
+}
+function renderPads(){
+  document.querySelectorAll("#pads .pad").forEach((p,i)=>{
+    const s = padSets[curSet][i];
+    p.classList.toggle("loaded", !!s);
+    p.querySelector(".pname").textContent = s ? s.name : "EMPTY";
+  });
+}
+function playPad(i){
+  const s = padSets[curSet][i];
+  if(!s || !AC) return;
+  const src = AC.createBufferSource(); src.buffer = s.buffer;
+  src.connect(N.sampBus); src.start();
+  const pads = document.querySelectorAll("#pads .pad");
+  pads[i].classList.add("active");
+  setTimeout(()=>pads[i].classList.remove("active"), 160);
+}
+</script>
+<script>
+/* ================= MONITEURS, MIDI, PRESETS, CLAVIER, REC ================= */
+var midiLearn = false, learnTarget = null, learnPad = -1, midiAccess = null;
+let ACC = "#ff9a1f", ACC2 = "#e6392b";
+var DIMC = "#a08c6a", EDGEC = "#3d2a1a", TXTC = "#f2e3c8";
+function cacheColors(){
+  const cs = getComputedStyle(document.body);
+  ACC = cs.getPropertyValue("--acc").trim() || ACC;
+  ACC2 = cs.getPropertyValue("--acc2").trim() || ACC2;
+  DIMC = cs.getPropertyValue("--dim").trim() || DIMC;
+  EDGEC = cs.getPropertyValue("--edge").trim() || EDGEC;
+  TXTC = cs.getPropertyValue("--text").trim() || TXTC;
+}
+function rms(buf){ let s = 0; for(let i=0;i<buf.length;i++) s += buf[i]*buf[i]; return Math.sqrt(s/buf.length); }
+/* couleur hex -> rgba avec alpha (hachures, aires du graphe kill) */
+function hexA(hx, a){
+  const h = (hx || "#ff9a1f").replace("#","");
+  const s = h.length === 3 ? h.split("").map(x=>x+x).join("") : h;
+  const n = parseInt(s, 16);
+  return "rgba(" + ((n>>16)&255) + "," + ((n>>8)&255) + "," + (n&255) + "," + a + ")";
+}
+
+/* ---------- vumètres verticaux par bande (SUB/BASS/MID/TOP) ---------- */
+/* FFT partagée N.anBands (2048 bins), énergie RMS de la vraie bande (bords = FREQ),
+   attaque instantanée / relâchement lent + ligne de crête qui retombe */
+let bandF = null;
+function drawBandMeters(){
+  if(!window.BANDM || !BANDM.length || !N.anBands || !AC) return;
+  if(!bandF) bandF = new Float32Array(N.anBands.frequencyBinCount);
+  N.anBands.getFloatFrequencyData(bandF);
+  const binHz = AC.sampleRate / N.anBands.fftSize;
+  const now = performance.now(), dt = Math.min(0.1, (now - (drawBandMeters._t || now))/1000);
+  drawBandMeters._t = now;
+  const nyq = AC.sampleRate/2;
+  const EC = isoCenters();
+  const E = [Math.sqrt(EC[0]*EC[1]), Math.sqrt(EC[1]*EC[2]), Math.sqrt(EC[2]*EC[3])];  /* mêmes bords que applyKills */
+  BANDM.forEach(m=>{
+    /* fenêtre = la vraie bande après découpe ISO : milieux géométriques entre les centres FREQ */
+    const ED = {"S":[20,E[0]],"B":[E[0],E[1]],"M":[E[1],E[2]],"T":[E[2],nyq*0.95]}[m.id] || m.r;
+    const f1 = Math.max(10, ED[0]), f2 = Math.min(nyq*0.95, ED[1]);
+    const i1 = Math.max(1, Math.round(f1/binHz)), i2 = Math.min(bandF.length-1, Math.round(f2/binHz));
+    let pw = 0;
+    for(let i=i1;i<=i2;i++){
+      const d = bandF[i];
+      if(isFinite(d) && d > -120){ const lin = Math.pow(10, d/20); pw += lin*lin; }
+    }
+    const db = 10*Math.log10(pw + 1e-12);   /* puissance TOTALE de la bande (insensible au nombre de bins) */
+    m.db = db;
+    /* calibration : plancher 44 dB + offset par bande (musique à volume normal ≈ 90%) ;
+       kill de la bande actif -> vumètre éteint (retombée douce) */
+    const kon = CTRL["k"+m.id] ? CTRL["k"+m.id].get() : 0;
+    const norm = kon ? 0 : clamp((db + 44 + m.off) / 44, 0, 1);
+    m.lv = norm > m.lv ? norm : Math.max(norm, m.lv - dt*2.2);
+    m.pk = Math.max(m.lv, m.pk - dt*0.35);
+    m.cover.style.height = (100 - m.lv*100).toFixed(1) + "%";
+    m.peak.style.top = ((1 - m.pk)*100).toFixed(1) + "%";
+  });
+}
+
+/* ---------- graphe du kill switch : spectre live + réponse des 4 bandes ---------- */
+/* La courbe orange = la réponse reconstruite d'après les réglages réels : pour chaque
+   bande on multiplie (somme complexe) les réponses de ses biquads via
+   getFrequencyResponse — mêmes noeuds et même câblage que rewireIso (étages XL/XH
+   insérés selon les kills actifs, cloche EQ incluse, gain VOL appliqué) — puis on
+   additionne les 4 bandes parallèles. Bords = milieux géométriques entre FREQ.
+   Le spectre pâle = mesure live du bus players (N.anBands, post-ISO) : le trou
+   visible = l'action réelle du kill. Recalcul seulement quand un knob/bouton bouge
+   (killDirty posé par applyKills), spectre à chaque image. */
+const KFLOOR = -36, KTOP = 24;   /* fenêtre verticale du graphe, en dB */
+const KGR = { cv:null, fr:null, fmax:0, re:[], im:[], db:[], tot:null, m1:null, p1:null, cols:null };
+function killFmax(){ return AC ? Math.min(20000, AC.sampleRate/2) : 20000; }
+
+function computeKillResponse(){
+  const P = KGR.fr.length, ids = ["S","B","M","T"];
+  if(!KGR.m1){ KGR.m1 = new Float32Array(P); KGR.p1 = new Float32Array(P); }
+  for(let i=0;i<4;i++){
+    if(!KGR.re[i]){ KGR.re[i] = new Float32Array(P); KGR.im[i] = new Float32Array(P); KGR.db[i] = new Float32Array(P); }
+    /* même chaîne que rewireIso(i) : biquads de bande + raidisseur du bord face au
+       kill + compensations passe-tout des autres vivantes + EQ (via isoChain) */
+    const chain = isoChain(i);
+    const re = KGR.re[i], im = KGR.im[i];
+    re.fill(1); im.fill(0);
+    chain.forEach(nd=>{
+      nd.getFrequencyResponse(KGR.fr, KGR.m1, KGR.p1);
+      for(let k=0;k<P;k++){
+        const m = KGR.m1[k], cs = Math.cos(KGR.p1[k]), sn = Math.sin(KGR.p1[k]);
+        const nr = re[k]*m*cs - im[k]*m*sn, ni = re[k]*m*sn + im[k]*m*cs;
+        re[k] = nr; im[k] = ni;
+      }
+    });
+    const vk = CTRL["k"+ids[i]+"v"], v = vk ? vk.get() : 0;
+    const gl = killState[i] ? 0 : (v <= -59 ? 0 : Math.pow(10, v/20));
+    for(let k=0;k<P;k++){
+      re[k] *= gl; im[k] *= gl;
+      KGR.db[i][k] = clamp(20*Math.log10(Math.hypot(re[k], im[k]) + 1e-9), KFLOOR, KTOP+6);
+    }
+  }
+  if(!KGR.tot) KGR.tot = new Float32Array(KGR.fr.length);
+  for(let k=0;k<KGR.fr.length;k++){
+    let r = 0, m = 0;
+    for(let i=0;i<4;i++){ r += KGR.re[i][k]; m += KGR.im[i][k]; }
+    KGR.tot[k] = clamp(20*Math.log10(Math.hypot(r, m) + 1e-9), KFLOOR, KTOP+6);
+  }
+}
+
+function drawKillGraph(){
+  if(!KGR.cv) KGR.cv = $("killGraph");
+  const cv = KGR.cv;
+  if(!cv) return;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if(W < 40 || H < 40) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  if(cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)){
+    cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+    killDirty = true;
+  }
+  const c = cv.getContext("2d");
+  c.setTransform(dpr,0,0,dpr,0,0);
+  c.clearRect(0,0,W,H);
+  /* table de fréquences log 20 Hz -> FMAX (points équirépartis en x sur l'axe log) */
+  const FMAX = killFmax(), NP = 140;
+  if(!KGR.fr || KGR.fmax !== FMAX){
+    KGR.fr = new Float32Array(NP);
+    for(let i=0;i<NP;i++) KGR.fr[i] = Math.exp(Math.log(20) + (Math.log(FMAX)-Math.log(20))*i/(NP-1));
+    KGR.fmax = FMAX; killDirty = true;
+  }
+  const x0 = 34, x1 = W-8, y0 = 16, y1 = H-18, pw = x1-x0, ph = y1-y0;
+  const fx = f => x0 + (Math.log(Math.max(f,20)) - Math.log(20)) / (Math.log(FMAX) - Math.log(20)) * pw;
+  const dbY = db => y0 + (KTOP - clamp(db, KFLOOR, KTOP+6)) / (KTOP - KFLOOR) * ph;
+  /* grille horizontale dB */
+  c.font = "8.5px ui-monospace,monospace"; c.textAlign = "right"; c.textBaseline = "middle";
+  for(let db=KTOP; db>=KFLOOR; db-=12){
+    const y = dbY(db);
+    c.strokeStyle = db === 0 ? "rgba(255,255,255,.22)" : "rgba(255,255,255,.07)";
+    c.setLineDash(db === 0 ? [4,4] : []);
+    c.beginPath(); c.moveTo(x0,y); c.lineTo(x1,y); c.stroke(); c.setLineDash([]);
+    c.fillStyle = "rgba(255,255,255,.45)";
+    c.fillText((db>0?"+":"")+db, x0-4, y);
+  }
+  /* grille verticale fréquences */
+  c.textAlign = "center"; c.textBaseline = "top";
+  [50,100,200,500,1000,2000,5000,10000].forEach(f=>{
+    const x = fx(f);
+    c.strokeStyle = "rgba(255,255,255,.06)";
+    c.beginPath(); c.moveTo(x,y0); c.lineTo(x,y1); c.stroke();
+    c.fillStyle = "rgba(255,255,255,.4)";
+    c.fillText(f>=1000 ? (f/1000)+"k" : ""+f, x, y1+4);
+  });
+  /* régions de bandes : hachures rouges si killée, tint sinon */
+  const CEN = isoCenters();
+  const E = [Math.sqrt(CEN[0]*CEN[1]), Math.sqrt(CEN[1]*CEN[2]), Math.sqrt(CEN[2]*CEN[3])];
+  const RL = [20, E[0], E[1], E[2]], RR = [E[0], E[1], E[2], FMAX];
+  const NAMES = ["SUB","BASS","MID","TOP"];
+  c.textBaseline = "middle";
+  for(let i=0;i<4;i++){
+    const rx = fx(Math.max(RL[i], 20)), rw = fx(RR[i]) - rx;
+    if(rw <= 0) continue;
+    if(killState[i]){
+      c.fillStyle = hexA(ACC2, .10);
+      c.fillRect(rx, y0, rw, ph);
+      c.save(); c.beginPath(); c.rect(rx, y0, rw, ph); c.clip();
+      c.strokeStyle = hexA(ACC2, .32); c.lineWidth = 1;
+      c.beginPath();
+      for(let hx=rx-ph; hx<rx+rw; hx+=9){ c.moveTo(hx, y1); c.lineTo(hx+ph, y0); }
+      c.stroke(); c.restore();
+    } else if(i % 2 === 1){
+      c.fillStyle = "rgba(255,255,255,.025)";
+      c.fillRect(rx, y0, rw, ph);
+    }
+    if(rw > 48){
+      c.font = "bold 10px ui-monospace,monospace"; c.textAlign = "center";
+      c.fillStyle = killState[i] ? ACC2 : "rgba(255,255,255,.72)";
+      c.fillText(NAMES[i] + (killState[i] ? " killed" : ""), rx + rw/2, y0 + 9);
+    }
+  }
+  /* bords = milieux géométriques entre centres FREQ : tirets, rouges si kill voisin */
+  for(let e=0;e<3;e++){
+    const kadj = killState[e] || killState[e+1];
+    const x = fx(E[e]);
+    c.strokeStyle = kadj ? ACC2 : "rgba(255,255,255,.30)";
+    c.setLineDash([4,3]); c.beginPath(); c.moveTo(x,y0); c.lineTo(x,y1); c.stroke(); c.setLineDash([]);
+    c.fillStyle = kadj ? ACC2 : "rgba(255,255,255,.55)";
+    c.font = "8.5px ui-monospace,monospace"; c.textAlign = "center"; c.textBaseline = "bottom";
+    c.fillText(E[e] >= 1000 ? f2(E[e]/1000) + " kHz" : Math.round(E[e]) + " Hz", x, y1 - 2);
+  }
+  /* spectre live du bus players (mesure post-ISO : le trou = l'action réelle du kill) */
+  if(AC && N.anBands){
+    let spec = bandF;
+    if(!spec){ spec = new Float32Array(N.anBands.frequencyBinCount); N.anBands.getFloatFrequencyData(spec); }
+    const binHz = AC.sampleRate / N.anBands.fftSize;
+    if(!KGR.cols || KGR.cols.length < W) KGR.cols = new Float32Array(W);
+    const cols = KGR.cols;
+    cols.fill(-200);
+    for(let i=2;i<spec.length;i++){
+      const f = i*binHz;
+      if(f < 20 || f > FMAX) continue;
+      const xi = Math.round(fx(f));
+      if(xi >= 0 && xi < W){ const d = spec[i]; if(isFinite(d) && d > cols[xi]) cols[xi] = d; }
+    }
+    const SLO = -72, SHI = -10;
+    c.save(); c.beginPath(); c.rect(x0,y0,pw,ph); c.clip();
+    c.beginPath();
+    for(let xi=Math.round(x0), first=true; xi<=x1; xi++){
+      const v = cols[xi] !== undefined ? cols[xi] : -200;
+      const y = y0 + (SHI - clamp(v, SLO, SHI)) / (SHI-SLO) * ph;
+      if(first){ c.moveTo(xi, y); first = false; } else c.lineTo(xi, y);
+    }
+    c.strokeStyle = "rgba(255,255,255,.35)"; c.lineWidth = 1; c.stroke();
+    c.lineTo(x1, y1); c.lineTo(x0, y1); c.closePath();
+    c.fillStyle = "rgba(255,255,255,.06)"; c.fill();
+    c.restore();
+  }
+  /* réponse des bandes : recalcul seulement quand un réglage a changé */
+  if(AC && N.iso){
+    if(killDirty) computeKillResponse();
+    killDirty = false;
+    c.save(); c.beginPath(); c.rect(x0,y0,pw,ph); c.clip();
+    c.lineWidth = 1;
+    for(let i=0;i<4;i++){
+      if(killState[i]) continue;   /* bande coupée : sa région hachurée parle pour elle */
+      c.strokeStyle = isoByp ? "rgba(255,255,255,.09)" : "rgba(255,255,255,.22)";
+      c.beginPath();
+      for(let k=0;k<KGR.fr.length;k++){
+        const x = fx(KGR.fr[k]), y = dbY(KGR.db[i][k]);
+        if(k===0) c.moveTo(x,y); else c.lineTo(x,y);
+      }
+      c.stroke();
+    }
+    c.beginPath();
+    if(isoByp){   /* BYPASS : la sortie = voie sèche => ligne plate à 0 dB */
+      c.moveTo(x0, dbY(0)); c.lineTo(x1, dbY(0));
+    } else for(let k=0;k<KGR.fr.length;k++){
+      const x = fx(KGR.fr[k]), y = dbY(KGR.tot[k]);
+      if(k===0) c.moveTo(x,y); else c.lineTo(x,y);
+    }
+    c.strokeStyle = ACC; c.lineWidth = 2; c.stroke();
+    if(!isoByp){
+      c.lineTo(x1, y1); c.lineTo(x0, y1); c.closePath();
+      c.fillStyle = hexA(ACC, .12); c.fill();
+    } else {
+      c.fillStyle = "rgba(244,234,214,.92)"; c.font = "bold 10px ui-monospace,monospace";
+      c.textAlign = "center"; c.textBaseline = "middle";
+      c.fillText("BYPASS — ISO out of the signal path", (x0+x1)/2, dbY(0) - 12);
+    }
+    c.restore();
+  } else {
+    c.fillStyle = "rgba(255,255,255,.4)"; c.font = "10px ui-monospace,monospace";
+    c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText("Power on to see the live spectrum and the response curve", (x0+x1)/2, (y0+y1)/2 - 7);
+    c.fillText("20 Hz … 20 kHz", (x0+x1)/2, (y0+y1)/2 + 9);
+  }
+  /* légende */
+  c.font = "8.5px ui-monospace,monospace"; c.textAlign = "right"; c.textBaseline = "middle";
+  let ly = y1 - 8;
+  c.strokeStyle = ACC; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(x1-60, ly); c.lineTo(x1-46, ly); c.stroke();
+  c.fillStyle = "rgba(255,255,255,.6)"; c.fillText("response", x1-4, ly);
+  ly -= 13;
+  c.strokeStyle = "rgba(255,255,255,.45)"; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(x1-60, ly); c.lineTo(x1-46, ly); c.stroke();
+  c.fillText("spectrum", x1-4, ly);
+  ly -= 13;
+  c.fillStyle = hexA(ACC2, .30); c.fillRect(x1-60, ly-4, 14, 8);
+  c.strokeStyle = hexA(ACC2, .6); c.lineWidth = 1; c.strokeRect(x1-60.5, ly-4.5, 15, 9);
+  c.fillText("killed", x1-4, ly);
+}
+
+function metersLoop(){
+  const vu = $("vu"), spec = $("spec");
+  const vc = vu.getContext("2d"), sc = spec.getContext("2d");
+  const W1 = vu.width, H1 = vu.height, W2 = spec.width, H2 = spec.height;
+  const tL = new Float32Array(N.anL.fftSize), tR = new Float32Array(N.anR.fftSize);
+  const fD = new Uint8Array(N.anSpec.frequencyBinCount);
+  /* barres résumé des modules repliés + mini VU long du master :
+     proposition A — la barre du module Players replié montre le titre à l'antenne,
+     le deck étant choisi par la position du crossfader ;
+     proposition B — chaque deck replié montre son propre titre et son temps restant.
+     Temps en rouge clignotant dès qu'il reste 30 s ou moins avant la fin. */
+  const mvu = $("miniVu"), micVu = $("micVu"), micVuBig = $("micVuBig");
+  const sumPl = $("foldSumPl"), sumA = $("foldSumA"), sumB = $("foldSumB");
+  const mvPk = [0,0], micPk = [0], micPkB = [0];
+  const tMic = N.micAn ? new Float32Array(N.micAn.fftSize) : null;
+  /* bande VU horizontale — même style pour le master replié et le micro (replié/déplié) :
+     1 ou 2 barres, dégradé vert-jaune-rouge, crêtes retombantes, étiquette optionnelle */
+  function stripMeter(cnv, lvls, pks, label){
+    if(!cnv || !cnv.offsetParent) return;   // canvas masqué : rien à dessiner
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.max(10, Math.round(cnv.clientWidth*dpr)), bh = Math.max(6, Math.round(cnv.clientHeight*dpr));
+    if(cnv.width !== bw || cnv.height !== bh){ cnv.width = bw; cnv.height = bh; }
+    const c = cnv.getContext("2d");
+    const w = cnv.width, h = cnv.height, pad = Math.round(2*dpr), gap = Math.round(2*dpr);
+    const x0 = pad + (label ? Math.round(28*dpr) : 0);
+    const full = w - x0 - pad;
+    const barH = Math.floor((h - pad*2 - gap*(lvls.length-1))/lvls.length);
+    c.clearRect(0,0,w,h);
+    const grad = c.createLinearGradient(x0,0,x0+full,0);
+    grad.addColorStop(0,"#3ecf5a"); grad.addColorStop(.7,"#ffd23e"); grad.addColorStop(1,"#ff4433");
+    lvls.forEach((n,i)=>{
+      pks[i] = Math.max(n, pks[i] - 0.006);
+      const y = pad + i*(barH+gap);
+      c.fillStyle = "rgba(255,255,255,.06)"; c.fillRect(x0, y, Math.max(0,full), barH);
+      c.fillStyle = grad; c.fillRect(x0, y, Math.max(0, full*Math.min(1,n)), barH);
+      c.fillStyle = "rgba(255,255,255,.75)";
+      c.fillRect(x0 + full*Math.min(1,pks[i]), y, Math.max(1,Math.round(1.5*dpr)), barH);
+    });
+    if(label){
+      c.fillStyle = ACC; c.font = "bold " + Math.round(9*dpr) + "px ui-monospace,monospace";
+      c.textAlign = "left"; c.textBaseline = "middle";
+      c.fillText(label, pad, h/2);
+    }
+  }
+  const sumCache = {};
+  function deckInfo(d){
+    const a = d && d.audio;
+    if(!a || !a.src || !d.files[d.sel]) return {t:"—", rem:null, end:false};
+    let rem = null;
+    if(isFinite(a.duration) && a.duration > 0) rem = Math.max(0, a.duration - a.currentTime);
+    return {t:d.files[d.sel].name.replace(/\.[^.]+$/,"") , rem, end:!!a.ended};
+  }
+  function setSum(el, key, deckTxt, title, rem, end, onAir){
+    if(!el || !el.offsetParent) return;   // module déplié : rien à dessiner
+    if(!el._p){
+      const b = document.createElement("span"); b.className = "fsdeck";
+      const t = document.createElement("span"); t.className = "fstitle";
+      const tm = document.createElement("span"); tm.className = "fstime";
+      el.appendChild(b); el.appendChild(t); el.appendChild(tm);
+      el._p = {b, t, tm};
+    }
+    const tS = title || "—";
+    const tmS = rem == null ? "—" : fmtTime(rem);
+    const low = rem != null && rem <= 30 && !end;
+    const sig = deckTxt + "\u0001" + tS + "\u0001" + tmS + "\u0001" + (onAir?1:0) + "\u0001" + (low?1:0);
+    if(sumCache[key] === sig) return;
+    sumCache[key] = sig;
+    el._p.b.textContent = deckTxt;
+    el._p.b.classList.toggle("on", !!onAir);
+    el._p.t.textContent = tS;
+    el._p.t.title = tS;
+    el._p.tm.textContent = tmS;
+    el._p.tm.title = "Time left before the track ends";
+    el._p.tm.classList.toggle("low", low);
+  }
+  function draw(){
+    /* players : barre de progression + temps + bouton play */
+    [deckA, deckB].forEach(d=>{
+      if(!d) return;
+      const a = d.audio;
+      const playing = a && a.src && !a.paused;
+      d.playBtn.classList.toggle("on", !!playing);
+      if(a && a.src && isFinite(a.duration) && a.duration > 0){
+        d.fill.style.width = (a.currentTime/a.duration*100) + "%";
+        d.time.textContent = fmtTime(a.currentTime) + " / " + fmtTime(a.duration);
+      } else { d.fill.style.width = "0%"; d.time.textContent = "0:00 / 0:00"; }
+    });
+    /* résumés des barres repliées : A = deck à l'antenne (loi cos/sin du crossfader),
+       B = état propre de chaque deck (badge allumé sur le deck côté fader) */
+    const xv = CTRL.xf ? CTRL.xf.get() : 0.5;
+    const onA = Math.cos(xv*Math.PI/2) >= Math.sin(xv*Math.PI/2);
+    const iA = deckInfo(deckA), iB = deckInfo(deckB), iAir = onA ? iA : iB;
+    setSum(sumPl, "pl", onA ? "A" : "B", iAir.t, iAir.rem, iAir.end, true);
+    setSum(sumA, "A", "A", iA.t, iA.rem, iA.end, onA);
+    setSum(sumB, "B", "B", iB.t, iB.rem, iB.end, !onA);
+    /* VU L/R */
+    N.anL.getFloatTimeDomainData(tL); N.anR.getFloatTimeDomainData(tR);
+    const n1 = clamp((20*Math.log10(rms(tL)+1e-6)+60)/66, 0, 1);
+    const n2 = clamp((20*Math.log10(rms(tR)+1e-6)+60)/66, 0, 1);
+    vc.clearRect(0,0,W1,H1);
+    [["L",n1,26],["R",n2,60]].forEach(pair=>{
+      const lb = pair[0], n = pair[1], y = pair[2];
+      vc.fillStyle = "rgba(255,255,255,.07)"; vc.fillRect(30, y, W1-42, 16);
+      const g = vc.createLinearGradient(30,0,W1-12,0);
+      g.addColorStop(0,"#3ecf5a"); g.addColorStop(.7,"#ffd23e"); g.addColorStop(1,"#ff4433");
+      vc.fillStyle = g; vc.fillRect(30, y, (W1-42)*n, 16);
+      vc.fillStyle = ACC; vc.font = "bold 11px monospace"; vc.fillText(lb, 10, y+13);
+    });
+    /* niveau micro (après gain micro) → bande du micro replié + bande du micro déplié */
+    let micN = 0;
+    if(N.micAn && tMic){
+      N.micAn.getFloatTimeDomainData(tMic);
+      micN = clamp((20*Math.log10(rms(tMic)+1e-6)+60)/66, 0, 1);
+    }
+    stripMeter(micVu, [micN], micPk);            /* barre du micro replié */
+    stripMeter(micVuBig, [micN], micPkB, "MIC"); /* bande du micro déplié */
+    /* mini VU long du master replié (masqué quand le master est déplié) */
+    stripMeter(mvu, [n1, n2], mvPk);
+    /* vumètres par bande */
+    drawBandMeters();
+    /* graphe du kill switch : spectre live + réponse des bandes */
+    drawKillGraph();
+    /* spectre */
+    N.anSpec.getByteFrequencyData(fD);
+    sc.clearRect(0,0,W2,H2);
+    const bars = 60, bw = W2/bars;
+    for(let i=0;i<bars;i++){
+      const idx = Math.floor(Math.pow(i/bars, 1.8) * fD.length * 0.72);
+      const v = fD[idx]/255, h = v*(H2-6);
+      sc.fillStyle = v > 0.85 ? "#ff4433" : (v > 0.6 ? "#ffd23e" : ACC);
+      sc.fillRect(i*bw+1, H2-3-h, bw-2, h);
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+/* dessin statique du graphe kill avant l'allumage : grille, bandes et bords par défaut */
+cacheColors();
+drawKillGraph();
+window.addEventListener("resize", ()=>drawKillGraph());
+
+/* ---------- TAP tempo écho + division ---------- */
+let taps = [];
+let echoBpm = 120;   /* tempo courant : appris par TAP, 120 BPM tant que rien n'a été tapé */
+function echoDiv(){ return parseFloat($("echoDivSel").value); }   /* fraction de mesure : 1/4 = un temps, 1 = une mesure */
+function echoDivLabel(){ return $("echoDivSel").selectedOptions[0].text; }
+/* cale le temps d'écho sur la division choisie : temps = division × durée de mesure (4 temps)
+   passe par le fader echoTime : position recalculée, SLIDE respecté, sauvegarde déclenchée */
+function echoFromTempo(bpm){
+  const t = clamp(4 * echoDiv() * 60 / bpm, 0.02, 1.5);
+  CTRL.echoTime.set(clamp(Math.log(t/0.02)/Math.log(75), 0, 1));
+  return t;
+}
+function tapEcho(){
+  const t = performance.now();
+  if(taps.length && t - taps[taps.length-1] > 2200) taps = [];
+  taps.push(t); if(taps.length > 5) taps.shift();
+  if(taps.length >= 2){
+    let s = 0; for(let i=1;i<taps.length;i++) s += taps[i]-taps[i-1];
+    const avg = s/(taps.length-1)/1000;
+    if(avg > 0.02 && avg < 1.6){
+      echoBpm = Math.round(60/avg);
+      /* division 1/4 par défaut : l'écho tombe sur le temps tapé, comme avant */
+      const set = echoFromTempo(echoBpm);
+      toast("Echo set to " + f2(set) + " s (" + echoBpm + " BPM, division " + echoDivLabel() + ")");
+    }
+  }
+}
+$("tapBtn").addEventListener("click", tapEcho);
+$("echoDivSel").addEventListener("change", ()=>{
+  if(!AC || !CTRL.echoTime) return;   /* avant l'allumage : rien à caler */
+  const set = echoFromTempo(echoBpm);
+  toast("Echo at " + f2(set) + " s (" + echoBpm + " BPM, division " + echoDivLabel() + ")");
+});
+
+/* ---------- micro ---------- */
+let micOn = false, micStream = null;
+$("micBtn").addEventListener("click", ()=>{
+  if(!AC) return;
+  if(micOn){
+    micStream.getTracks().forEach(t=>t.stop());
+    micOn = false; $("micBtn").classList.remove("on");
+    N.micGain.gain.value = 0; toast("Mic off"); return;
+  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    toast("Mic not supported in this context"); return;
+  }
+  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false}})
+  .then(stream=>{
+    micStream = stream;
+    if(!N.micReady){
+      const src = AC.createMediaStreamSource(stream);
+      src.connect(N.micHP);   /* HP → EQ 3 bandes → paramétrique → gain : déjà câblés */
+      N.micGain.connect(N.mixDirect);
+      N.micGain.connect(N.micEcho); N.micEcho.connect(N.echoBus);
+      N.micGain.connect(N.micRev); N.micRev.connect(N.revBus);
+      N.micReady = true;
+    }
+    N.micGain.gain.value = gainFromDb(CTRL.micGain.get());
+    N.micHP.frequency.value = CTRL.micHP.get();
+    N.micEq[0].gain.value = CTRL.micLow.get(); N.micEq[1].gain.value = CTRL.micMid.get(); N.micEq[2].gain.value = CTRL.micHigh.get();
+    N.micPk.frequency.value = CTRL.micPf.get(); N.micPk.Q.value = CTRL.micPq.get(); N.micPk.gain.value = CTRL.micPg.get();
+    N.micEcho.gain.value = CTRL.micEcho.get();
+    N.micRev.gain.value = CTRL.micRev.get();
+    micOn = true; $("micBtn").classList.add("on");
+    toast("Mic on — set it in the MIC panel");
+  })
+  .catch(err=>toast("Mic unavailable: " + err.message));
+});
+
+/* ---------- entrées ligne (LINE 1 / LINE 2 des tranches A/B) ---------- */
+/* chaque tranche peut choisir le player ou une entrée ligne (interface audio,
+   platine, cartesien…) via son sélecteur ; la source passe par l'EQ de tranche,
+   le crossfader, le dub filtre et l'ISO comme un player */
+let lineStreams = {}, linePending = {};
+const LINE_OPTS = {echoCancellation:false, noiseSuppression:false, autoGainControl:false};
+function ensureLine(n){
+  if(!AC || lineStreams[n] || linePending[n]) return;
+  const side = n === 1 ? "A" : "B";
+  const fail = msg=>{ toast(msg); setChanSrc(side, "deck"); };
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ fail("Line input not supported in this context"); return; }
+  linePending[n] = true;
+  const gum = o => navigator.mediaDevices.getUserMedia(o);
+  /* LINE 2 : si une 2e entrée audio existe (interface multi-entrées), on la préfère */
+  let p = Promise.resolve(null);
+  if(n === 2 && lineStreams[1]){
+    p = navigator.mediaDevices.enumerateDevices()
+      .then(ds=>{
+        const tr = lineStreams[1].getAudioTracks()[0];
+        const used = tr && tr.getSettings ? (tr.getSettings().deviceId || "") : "";
+        const alt = ds.find(d=>d.kind==="audioinput" && d.deviceId && d.deviceId !== "default" && d.deviceId !== used);
+        return alt ? gum({audio:Object.assign({deviceId:{exact:alt.deviceId}}, LINE_OPTS)}) : null;
+      })
+      .catch(()=>null);
+  }
+  p.then(alt => alt || gum({audio:LINE_OPTS}))
+  .then(stream=>{
+    linePending[n] = false; lineStreams[n] = stream;
+    AC.createMediaStreamSource(stream).connect(N["line"+side]);
+    toast("Line " + n + " active — channel " + side + " on line input");
+  })
+  .catch(err=>{
+    linePending[n] = false;
+    fail("Line " + n + " unavailable: " + err.message);
+  });
+}
+
+/* ---------- MIDI ---------- */
+const midiBinds = JSON.parse(localStorage.getItem("dubstation_midi") || "{}");
+function saveMidi(){ localStorage.setItem("dubstation_midi", JSON.stringify(midiBinds)); }
+function MIDIlearning(){ return midiLearn && (learnTarget !== null || learnPad >= 0); }
+function flash(el){ if(!el) return; el.classList.add("learning","learn-flash"); setTimeout(()=>el.classList.remove("learning","learn-flash"), 900); }
+$("midiBtn").addEventListener("click", ()=>{
+  if(!navigator.requestMIDIAccess){ toast("Web MIDI not supported by this browser"); return; }
+  if(!midiAccess){
+    navigator.requestMIDIAccess().then(a=>{
+      midiAccess = a; hookMidi();
+      midiLearn = true; $("midiBtn").classList.add("on");
+      toast("MIDI on — click a control, then move a knob");
+      a.onstatechange = ()=>hookMidi();
+    }).catch(()=>toast("MIDI access denied by the browser"));
+  } else if(midiLearn){
+    midiLearn = false; learnTarget = null; learnPad = -1;
+    $("midiBtn").classList.remove("on"); toast("MIDI: normal mode");
+  } else {
+    midiLearn = true; $("midiBtn").classList.add("on");
+    toast("MIDI learn: click a control, then move a controller");
+  }
+});
+function hookMidi(){ midiAccess.inputs.forEach(inp=>{ inp.onmidimessage = onMidi; }); }
+function onMidi(e){
+  const st = e.data[0], d1 = e.data[1], d2 = e.data[2];
+  const cmd = st & 0xf0, ch = st & 0x0f;
+  if(midiLearn && learnTarget && cmd === 0xB0){
+    midiBinds["cc"+ch+"-"+d1] = learnTarget.id;
+    saveMidi(); flash(learnTarget.el); learnTarget = null;
+    toast("Assigned: CC " + d1 + " (channel " + (ch+1) + ")");
+    return;
+  }
+  if(midiLearn && learnPad >= 0 && cmd === 0x90 && d2 > 0){
+    midiBinds["note"+d1] = { pad: learnPad };
+    saveMidi(); learnPad = -1;
+    toast("Pad assigned: note " + d1);
+    return;
+  }
+  if(cmd === 0xB0){
+    const id = midiBinds["cc"+ch+"-"+d1];
+    if(id && CTRL[id]){
+      const api = CTRL[id];
+      if(api.kind === "knob") api.setNorm(d2/127);
+      else if(api.kind === "fader") api.set(d2/127);
+      else if(d2 > 0) api.set(api.get() ? 0 : 1);
+    }
+  }
+  if(cmd === 0x90 && d2 > 0){
+    const b = midiBinds["note"+d1];
+    if(b && b.pad >= 0) playPad(b.pad);
+  }
+}
+document.addEventListener("click", e=>{
+  if(!midiLearn) return;
+  const padEl = e.target.closest("#pads .pad");
+  if(padEl){
+    learnPad = Array.from(document.querySelectorAll("#pads .pad")).indexOf(padEl);
+    toast("Pad " + (learnPad+1) + ": press a note on the controller");
+    e.stopPropagation(); return;
+  }
+  const el = e.target.closest(".knob,.tgl,.fader");
+  if(!el) return;
+  for(const k of Object.keys(CTRL)){
+    const api = CTRL[k];
+    if(api.el === el || (api.el.contains && api.el.contains(el))){
+      learnTarget = api; toast("Learning: " + k + " — move a MIDI knob / fader");
+      return;
+    }
+  }
+}, true);
+
+/* ---------- presets ---------- */
+let saveTimer = null;
+function saveState(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    try{
+      const s = {};
+      Object.keys(CTRL).forEach(k=>{ s[k] = CTRL[k].get(); });
+      localStorage.setItem("dubstation_state", JSON.stringify(s));
+    }catch(err){}
+  }, 350);
+}
+function applyState(s){
+  Object.keys(s).forEach(k=>{ if(CTRL[k]) try{ CTRL[k].set(s[k]); }catch(err){} });
+  saveState();
+}
+$("loadBtn").addEventListener("click", ()=>{
+  const st = localStorage.getItem("dubstation_state");
+  if(!st){ toast("No local save found"); return; }
+  try{ applyState(JSON.parse(st)); toast("Settings restored"); }catch(err){ toast("Unreadable save file"); }
+});
+$("saveBtn").addEventListener("click", ()=>{
+  const s = {};
+  Object.keys(CTRL).forEach(k=>{ s[k] = CTRL[k].get(); });
+  const blob = new Blob([JSON.stringify({app:"DubStation", version:2, state:s}, null, 1)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "dubstation-preset.json"; a.click();
+  saveState(); toast("Preset exported");
+});
+$("filePreset").addEventListener("change", e=>{
+  const f = e.target.files[0]; if(!f) return;
+  f.text().then(t=>{
+    const obj = JSON.parse(t);
+    applyState(obj.state || obj);
+    toast("Preset loaded: " + f.name);
+  }).catch(()=>toast("Invalid preset file"));
+  e.target.value = "";
+});
+
+/* ---------- enregistrement master ---------- */
+let rec = null, recChunks = [], recN = 0;
+$("recBtn").addEventListener("click", ()=>{
+  if(!AC) return;
+  if(rec && rec.state === "recording"){ rec.stop(); return; }
+  const mime = ["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(m=>window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+  if(!window.MediaRecorder){ toast("Recording not supported by this browser"); return; }
+  try{ rec = new MediaRecorder(N.recDest.stream, mime ? {mimeType:mime} : {}); }
+  catch(err){ toast("Recording unavailable"); return; }
+  recChunks = [];
+  rec.ondataavailable = ev=>{ if(ev.data.size) recChunks.push(ev.data); };
+  rec.onstop = ()=>{
+    const blob = new Blob(recChunks, {type: rec.mimeType || "audio/webm"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "dubstation-take-" + (++recN) + ".webm";
+    a.click();
+    $("recBtn").classList.remove("on");
+    toast("Take " + recN + " recorded (downloaded)");
+  };
+  rec.start();
+  $("recBtn").classList.add("on");
+  toast("Recording master output…");
+});
+
+/* ---------- skins ---------- */
+const THEMES = ["classic","roots","digital"];
+$("themeBtn").addEventListener("click", ()=>{
+  const cur = document.body.dataset.theme;
+  document.body.dataset.theme = THEMES[(THEMES.indexOf(cur)+1) % THEMES.length];
+  cacheColors(); saveState();
+});
+
+/* ---------- aide ---------- */
+$("helpBtn").addEventListener("click", ()=>{ $("help").style.display = "block"; });
+document.querySelectorAll("#helpClose,#helpCloseFr").forEach(b=>b.addEventListener("click", ()=>{ $("help").style.display = "none"; }));
+/* langue de l'aide : EN par défaut, FR au clic, mémorisée par le navigateur */
+(function(){
+  const EN = $("helpEn"), FR = $("helpFr"), btn = $("helpLang");
+  function setLang(lg){
+    const fr = lg === "fr";
+    FR.style.display = fr ? "block" : "none";
+    EN.style.display = fr ? "none" : "block";
+    btn.textContent = fr ? "ENGLISH" : "FRANÇAIS";
+    try{ localStorage.setItem("dubstation_help_lang", fr ? "fr" : "en"); }catch(err){}
+  }
+  btn.addEventListener("click", ()=>{ setLang(FR.style.display !== "none" ? "en" : "fr"); });
+  let saved = "en";
+  try{ saved = localStorage.getItem("dubstation_help_lang") || "en"; }catch(err){}
+  setLang(saved);
+})();
+
+/* ---------- modules repliables ---------- */
+/* clic sur la barre de titre = replier / déplier le module ;
+   état mémorisé à part (dubstation_panels), indépendant des presets */
+(function(){
+  const FOLDKEY = "dubstation_panels";
+  let folds = {};
+  try{ folds = JSON.parse(localStorage.getItem(FOLDKEY) || "{}") || {}; }catch(err){}
+  document.querySelectorAll(".panel").forEach(p=>{
+    const h = p.querySelector(":scope > h3");
+    if(!h) return; // le header n'a pas de h3 : jamais repliable
+    const label = (h.firstChild && h.firstChild.nodeType === 3 ? h.firstChild.textContent : h.textContent).trim();
+    if(folds[label]) p.classList.add("collapsed");
+    h.title = "Click to fold / unfold";
+    h.addEventListener("click", e=>{
+      if(e.target.closest("button,select,input,a,label,canvas,.killminis")) return; // BYPASS ISO et mini kills dans le titre, mini VU du master
+      const fold = !p.classList.contains("collapsed");
+      p.classList.toggle("collapsed", fold);
+      folds[label] = fold;
+      try{ localStorage.setItem(FOLDKEY, JSON.stringify(folds)); }catch(err){}
+    });
+  });
+})();
+
+/* ---------- clavier ---------- */
+window.addEventListener("keydown", e=>{
+  if(e.repeat) return;
+  const tag = (e.target.tagName || "").toLowerCase();
+  if(tag === "input" || tag === "textarea") return;
+  const k = e.key.toLowerCase();
+  if(k === "?") { $("help").style.display = "block"; e.preventDefault(); return; }
+  if($("help").style.display === "block"){
+    if(k === "escape") $("help").style.display = "none";
+    return;
+  }
+  if(k === "q"){ togglePlay(deckA); e.preventDefault(); }
+  else if(k === "p"){ togglePlay(deckB); e.preventDefault(); }
+  else if(k === "1" || k === "2" || k === "3" || k === "4"){
+    const api = CTRL[["kS","kB","kM","kT"][+k-1]];
+    api.set(api.get() ? 0 : 1); e.preventDefault();
+  }
+  else if(k === "5"){ setDubType(CTRL.dubLP.get() ? "highpass" : "lowpass"); e.preventDefault(); }
+  else if(k === "f"){ CTRL.dubLFO.set(CTRL.dubLFO.get() ? 0 : 1); e.preventDefault(); }
+  else if(k === "e"){ CTRL.ppBtn.set(CTRL.ppBtn.get() ? 0 : 1); e.preventDefault(); }
+  else if(k === "s"){ sirenOn(); e.preventDefault(); }
+  else if(k === " "){ tapEcho(); e.preventDefault(); }
+  else if(k === "arrowleft"){ CTRL.xf.set(clamp(CTRL.xf.get()-0.06, 0, 1)); e.preventDefault(); }
+  else if(k === "arrowright"){ CTRL.xf.set(clamp(CTRL.xf.get()+0.06, 0, 1)); e.preventDefault(); }
+  else {
+    const i = PADKEYS.indexOf(k);
+    if(i >= 0){ playPad(i); e.preventDefault(); }
+  }
+});
+window.addEventListener("keyup", e=>{
+  if(e.key.toLowerCase() === "s") sirenOff();
+});
+
+/* ---------- boot ---------- */
+let booted = false;
+$("powerBtn").addEventListener("click", ()=>{
+  if(booted) return; booted = true;
+  buildGraph();
+  buildControls();
+  deckA = makeDeck("A");
+  deckB = makeDeck("B");
+  syncAllParams();
+  buildSirenUI();
+  buildSamplerUI();
+  AC.resume();
+  $("power").style.display = "none";
+  cacheColors();
+  metersLoop();
+  const st = localStorage.getItem("dubstation_state");
+  if(st){
+    try{ applyState(JSON.parse(st)); }catch(err){}
+  }
+  toast("DubStation is on — drop your files and play! Hit ? for help.", 3200);
+});
+</script>
+</body>
+</html>
